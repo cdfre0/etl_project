@@ -1,22 +1,9 @@
-# Azure ETL Project
+# Architektura ETL dla Azure
 
-This project implements an ETL (Extract, Transform, Load) pipeline using a medallion architecture on Azure.
+Ten projekt implementuje proces ETL (Extract, Transform, Load) z wykorzystaniem Azure.
 
-## Architecture
+## Warstwy danych
 
-The data is processed through three layers:
-
--   **Bronze**: Raw data ingested from source systems. No transformations are applied.
--   **Silver**: Cleaned, validated, and enriched data.
--   **Gold**: Aggregated data ready for analytics and reporting.
-
-## Directory Structure
-
--   `data/`: Contains sample data for each layer.
-    -   `bronze/`
-    -   `silver/`
-    -   `gold/`
--   `src/`: Contains the source code for the ETL jobs.
-    -   `bronze/`: Scripts for ingesting data into the bronze layer.
-    -   `silver/`: Scripts for transforming data from bronze to silver.
-    -   `gold/`: Scripts for aggregating data from silver to gold.
+- **Bronze**: Surowe dane, pobrane bezpośrednio ze źródeł. Dane są niezmienione.
+- **Silver**: Oczyszczone i zwalidowane dane z warstwy bronze. Na tej warstwie odbywa się transformacja i standaryzacja danych.
+- **Gold**: Zagregowane dane, gotowe do analizy i raportowania.
