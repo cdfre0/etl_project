@@ -1,11 +1,10 @@
 services:
-  etl-agent:
+  orchestrator:
     build: .
     volumes:
       - .:/workspace
-    environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - INITIAL_TASK="Zainicjuj projekt ETL dla Azure. Utwórz strukturę katalogów dla warstw bronze, silver i gold. Utwórz plik README.md z opisem architektury. Utwórz plik src/bronze/ingest_csv.py z pustą strukturą klasy do pobierania danych. Zrób commit tych zmian na nowej gałęzi o nazwie 'init-etl-structure'."
-    command: python src/agent.py
+    env_file:
+      - .env
+    command: python src/agent_orchestrator.py
     stdin_open: true
     tty: true
