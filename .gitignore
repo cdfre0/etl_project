@@ -37,4 +37,12 @@ override.tf.json
 *.tfplan
 .terraformrc
 terraform.rc
-infra/.terraform.lock.hcl
+
+# --- Terraform ---
+# Exclude all Terraform directories and state files, which can contain secrets.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+# Keep the dependency lock file to ensure consistent provider versions.
+!.terraform.lock.hcl

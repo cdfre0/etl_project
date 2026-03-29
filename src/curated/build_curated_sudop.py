@@ -10,6 +10,7 @@ import logging
 import os
 from pathlib import Path
 import pandas as pd 
+from datetime import datetime
 
 from dotenv import load_dotenv
 
@@ -36,7 +37,7 @@ def transform_dataframe(df: pd.DataFrame, table_def: dict, source_file_name: str
     column_defs = {col['name']: col for col in table_def['columns']}
     
     rename_map = {
-        "name": "kod", "number": "nazwa",  # Dictionaries have swapped names in source
+        "name": "nazwa", "number": "kod",  # Map source dictionary fields to curated schema
         "nip-udzielajacego-pomocy": "nip_udzielajacego_pomocy", "nazwa-udzielajacego-pomocy": "nazwa_udzielajacego_pomocy",
         "srodek-pomocowy-numer": "srodek_pomocowy_numer", "srodek-pomocowy-nazwa": "srodek_pomocowy_nazwa",
         "podstawa-prawna-2a-kod": "podstawa_prawna_2a_kod", "podstawa-prawna-2a-nazwa": "podstawa_prawna_2a_nazwa",

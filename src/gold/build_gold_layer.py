@@ -7,6 +7,7 @@ the final analytical tables as Parquet files in the 'gold' container.
 
 import logging
 import os
+import pandas as pd 
 
 from dotenv import load_dotenv
 

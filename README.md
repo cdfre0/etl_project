@@ -113,6 +113,18 @@ docker compose --profile all up --build
 
 ---
 
+## Running the Analysis
+
+After running the full pipeline, you can execute a sample analysis script that demonstrates how to query and use the gold layer tables.
+
+This script connects to your data lake, loads the `fact_przypadki_pomocy` and `dim_geografia` tables, and calculates the total aid amount for the top 20 municipalities.
+
+```bash
+docker compose --profile analysis up --build
+```
+
+---
+
 ## Infrastructure as Code (Terraform)
 
 The Azure infrastructure for this project is fully defined and managed using Terraform. The configuration files are located in the `infra/` directory.
@@ -174,3 +186,18 @@ The Terraform script provisions the following key Azure resources:
     ```
 
 After applying, Terraform will output the names and details of the created resources.
+
+---
+
+## Project Documentation
+
+For more detailed information, please refer to the documents in the `documentation/` directory:
+
+*   **[Architecture Overview](./documentation/ARCHITECTURE.md):** A high-level diagram and description of the system components and data flow.
+*   **[Data Quality Risks](./documentation/DATA_QUALITY_RISKS.md):** An analysis of potential data quality issues and the strategies used to mitigate them.
+
+## Analytics
+
+The final, analytics-ready tables are stored in the `gold` container. For sample queries that demonstrate how to join the fact and dimension tables to answer business questions, see the `analysis/` directory:
+
+*   **[Sample Queries](./analysis/sample_queries.sql):** Example SQL queries for use in an analytics platform like Azure Synapse, Databricks, or DuckDB.
