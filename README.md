@@ -1,54 +1,176 @@
-# Architektura ETL dla Azure
+# ETL-Azure-Pipeline-SUDOP
 
-Ten projekt implementuje proces ETL (Extract, Transform, Load) z wykorzystaniem Azure.
+This project implements a complete ETL (Extract, Transform, Load) pipeline using Python, Docker, and Microsoft Azure services. The pipeline follows a Medallion Architecture (Bronze -> Silver -> Gold) to progressively refine data from the Polish SUDOP API into a structured, analytics-ready format.
 
-## Warstwy danych
+## Medallion Architecture Overview
 
-- **Bronze**: Surowe dane, pobrane bezpośrednio ze źródeł. Dane są niezmienione.
-- **Silver**: Oczyszczone i zwalidowane dane z warstwy bronze. Na tej warstwie odbywa się transformacja i standaryzacja danych.
-- **Gold**: Zagregowane dane, gotowe do analizy i raportowania.
+The pipeline is structured into three distinct layers, each serving a specific purpose:
 
-## Infrastruktura (IaC)
+```mermaid
+graph TD
+    A[SUDOP API] --> B[Bronze Layer];
+    B --> C[Silver Layer];
+    C --> D[Gold Layer];
+    D --> E[Analytics / BI Tools];
 
-Infrastruktura została wdrożona przy użyciu Terraform. Wszystkie zasoby znajdują się w grupie zasobów `rg-etl-project-dev`.
+    subgraph "Azure Data Lake Storage"
+        B(Raw JSON Files);
+        C(Cleaned Parquet Files);
+        D(Star Schema Parquet);
+    end
 
-**Szczegóły wdrożonych zasobów (nazwy, endpointy) znajdują się w pliku `infra_outputs.json`.**
+    style B fill:#CD7F32,stroke:#333,stroke-width:2px
+    style C fill:#C0C0C0,stroke:#333,stroke-width:2px
+    style D fill:#FFD700,stroke:#333,stroke-width:2px
+```
 
-### Kluczowe komponenty:
-- **Azure Data Lake Storage Gen2**: Konto magazynu z kontenerami `bronze`, `silver` i `gold`.
-- **Azure Data Factory**: Instancja do orkiestracji potoków ETL.
-- **Azure Key Vault**: Magazyn do bezpiecznego przechowywania sekretów, takich jak klucze API.
+1.  **Bronze Layer (Raw Data):**
+    *   **Purpose:** Ingests raw, unaltered data directly from the source. This ensures data lineage and allows for rebuilding subsequent layers without re-fetching from the source API.
+    *   **Format:** JSON files (one per dictionary, one per case file download).
+    *   **Location:** `bronze` container in Azure Data Lake.
 
-### Dostęp i uprawnienia:
-Tożsamość zarządzana (Managed Identity) instancji Azure Data Factory posiada uprawnienia `Storage Blob Data Contributor` do konta magazynu oraz uprawnienia do odczytu (`Get/List`) sekretów w Key Vault.
+2.  **Silver Layer (Curated Data):**
+    *   **Purpose:** Cleans, validates, and structures the raw data. This layer represents a single source of truth for clean, queryable data.
+    *   **Format:** Columnar Parquet files for efficiency.
+    *   **Structure:**
+        *   `przypadki_pomocy.parquet`: A single, consolidated table of all aid cases.
+        *   `slownik_gmina_siedziby.parquet`, `slownik_forma_pomocy.parquet`, etc.: Separate tables for each dictionary.
 
-## Następne kroki (ETL)
+3.  **Gold Layer (Analytical Data):**
+    *   **Purpose:** Creates a highly refined, aggregated data model optimized for business intelligence and analytics.
+    *   **Format:** Columnar Parquet files.
+    *   **Structure:** A **Star Schema** with a central fact table and multiple dimension tables, perfect for BI tools like Power BI or Tableau.
+        *   `fact_przypadki_pomocy`: Contains numeric measures and keys.
+        *   `dim_beneficjent`, `dim_data`, `dim_geografia`, etc.: Descriptive dimension tables.
 
-Agent ETL powinien wykorzystać informacje z `infra_outputs.json` do konfiguracji połączeń i potoków danych.
+---
 
-## Konfiguracja ręczna (Uprawnienia)
+## Getting Started
 
-Ze względu na ograniczenia subskrypcji "Azure for Students", następujące przypisania ról muszą zostać wykonane ręcznie w portalu Azure po wdrożeniu infrastruktury przez Terraform.
+### Prerequisites
 
-**Wymagane identyfikatory (Principal IDs):**
-- **Container App (`aca-etl-app`) Principal ID**: `3d94e9ab-c27a-4715-a264-2b32097f8c63`
-- **Data Factory (`adf-etl-medallion-processor`) Principal ID**: Należy pobrać z portalu Azure:
-  1. Przejdź do grupy zasobów `rg-etl-project-dev`.
-  2. Otwórz fabrykę danych `adf-etl-medallion-processor`.
-  3. W menu po lewej stronie, w sekcji "Ustawienia", kliknij **Tożsamość**.
-  4. Skopiuj **Identyfikator obiektu (jednostki usługi)**.
+*   Docker and Docker Compose
+*   An Azure subscription
+*   An Azure Storage Account with Data Lake Storage Gen2 enabled.
 
-### 1. Dostęp Container App do Storage Account
-- **Zasób**: Konto magazynu `stetldatamedallion`
-- **Rola**: `Storage Blob Data Contributor`
-- **Przypisz do**: Tożsamość zarządzana (Managed Identity) -> Container App -> `aca-etl-app`
+### Environment Setup
 
-### 2. Dostęp Container App do Key Vault
-- **Zasób**: Key Vault `kv-medallion-sec`
-- **Rola**: `Key Vault Secrets User`
-- **Przypisz do**: Tożsamość zarządzana (Managed Identity) -> Container App -> `aca-etl-app`
+1.  Clone the repository.
+2.  Create a file named `.env` in the project root.
+3.  Add your Azure Storage connection string to this file:
+    ```
+    AZURE_STORAGE_CONNECTION_STRING="your_storage_account_connection_string"
+    ```
+4. Make sure you have `bronze`, `silver`, and `gold` containers in your storage account.
 
-### 3. Dostęp Data Factory do Storage Account
-- **Zasób**: Konto magazynu `stetldatamedallion`
-- **Rola**: `Storage Blob Data Contributor`
-- **Przypisz do**: Tożsamość zarządzana (Managed Identity) -> Data Factory -> `adf-etl-medallion-processor`
+---
+
+## Running the ETL Pipeline
+
+The entire pipeline is managed through Docker Compose and is divided into profiles, allowing you to run each stage independently.
+
+### 1. Run Bronze Ingestion
+
+This step connects to the SUDOP API, downloads the dictionary and case files, and uploads them as raw JSON to the `bronze` container.
+
+```bash
+docker compose --profile bronze up --build
+```
+
+**Smart Skip Feature:** To avoid re-downloading data you've recently fetched, you can set the `SKIP_IF_EXISTS=true` environment variable. It will skip the download if the newest file in the `bronze/dictionaries` folder is less than 24 hours old.
+
+```bash
+# Example for PowerShell
+$env:SKIP_IF_EXISTS="true"; docker compose --profile bronze up
+
+# Example for bash
+SKIP_IF_EXISTS=true docker compose --profile bronze up
+```
+
+### 2. Run Silver (Curated) Transformation
+
+This step reads the raw JSON from the `bronze` container, cleans and structures it according to the rules in `src/curated/metadata.json`, and saves the output as Parquet files in the `silver` container.
+
+```bash
+docker compose --profile curated up --build
+```
+
+### 3. Run Gold (Analytical) Transformation
+
+This step reads the clean Parquet files from the `silver` container, builds the star schema (fact and dimension tables), and saves them as Parquet files in the `gold` container.
+
+```bash
+docker compose --profile gold up --build
+```
+
+### Run the Full Pipeline
+
+To run all three stages in sequence (Bronze -> Silver -> Gold), use the `all` profile.
+
+```bash
+docker compose --profile all up --build
+```
+
+---
+
+## Infrastructure as Code (Terraform)
+
+The Azure infrastructure for this project is fully defined and managed using Terraform. The configuration files are located in the `infra/` directory.
+
+### Deployed Resources
+
+The Terraform script provisions the following key Azure resources:
+
+*   **Resource Group:** A logical container for all project resources (`rg-etl-project-dev`).
+*   **Azure Data Lake Storage Gen2:** The core storage for all data layers, with `bronze`, `silver`, and `gold` containers created automatically.
+*   **Azure Container Registry:** To store and manage the Docker image for the ETL application.
+*   **Azure Container App Environment:** A dedicated and isolated environment to run the containerized ETL jobs.
+*   **Azure Container App:** The application that runs the ETL code from the Docker image.
+*   **Azure Key Vault:** For securely storing secrets like the storage connection string (though not fully automated in this version).
+*   **Azure Data Factory:** Included for future orchestration needs (currently not used by the Docker-based pipeline).
+
+### How to Deploy the Infrastructure
+
+#### Prerequisites
+
+1.  [Install Terraform](https://learn.hashicorp.com/tutorials/terraform/install-cli).
+2.  [Install Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) and authenticate with your Azure account:
+    ```bash
+    az login
+    ```
+3. Set your subscription
+    ```bash
+    az account set --subscription "My Subscription"
+    ```
+
+#### Deployment Steps
+
+1.  **Navigate to the infra directory:**
+    ```bash
+    cd infra
+    ```
+2.  **Initialize Terraform:**
+    This will download the necessary provider plugins.
+    ```bash
+    terraform init
+    ```
+3.  **Create a `terraform.tfvars` file:**
+    Create this file in the `infra/` directory and add the required variable values. You can get these from your Azure subscription and Service Principal details:
+    ```hcl
+    subscription_id = "your-azure-subscription-id"
+    client_id       = "your-service-principal-client-id"
+    client_secret   = "your-service-principal-client-secret"
+    tenant_id       = "your-azure-tenant-id"
+    ```
+4.  **Plan the deployment:**
+    This will show you what resources Terraform will create.
+    ```bash
+    terraform plan
+    ```
+5.  **Apply the configuration:**
+    This will create the resources in Azure.
+    ```bash
+    terraform apply
+    ```
+
+After applying, Terraform will output the names and details of the created resources.
