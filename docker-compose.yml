@@ -5,6 +5,4 @@ services:
       - .:/workspace
     env_file:
       - .env
-    command: python src/agent_orchestrator.py
-    stdin_open: true
-    tty: true
+    command: python -u src/bronze/ingest_sudop.py

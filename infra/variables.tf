@@ -1,4 +1,3 @@
-
 variable "resource_group_name" {
   description = "Name of the resource group."
   type        = string
@@ -33,4 +32,43 @@ variable "api_key_secret_name" {
   description = "Name of the secret for the CEIDG API key."
   type        = string
   default     = "CEIDG-API-KEY"
+}
+
+variable "container_registry_name" {
+  description = "Name of the Azure Container Registry."
+  type        = string
+  default     = "acretlmedallion"
+}
+
+variable "container_app_environment_name" {
+  description = "The name of the container app environment."
+  type        = string
+  default     = "aca-env-etl"
+}
+
+variable "container_app_name" {
+  description = "Name of the Azure Container App."
+  type        = string
+  default     = "aca-etl-app"
+}
+
+variable "subscription_id" {
+  description = "The Azure subscription ID."
+  type        = string
+}
+
+variable "client_id" {
+  description = "The client ID for the service principal."
+  type        = string
+}
+
+variable "client_secret" {
+  description = "The client secret for the service principal."
+  type        = string
+  sensitive   = true
+}
+
+variable "tenant_id" {
+  description = "The Azure tenant ID."
+  type        = string
 }

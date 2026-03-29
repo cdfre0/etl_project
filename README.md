@@ -25,3 +25,30 @@ Tożsamość zarządzana (Managed Identity) instancji Azure Data Factory posiada
 ## Następne kroki (ETL)
 
 Agent ETL powinien wykorzystać informacje z `infra_outputs.json` do konfiguracji połączeń i potoków danych.
+
+## Konfiguracja ręczna (Uprawnienia)
+
+Ze względu na ograniczenia subskrypcji "Azure for Students", następujące przypisania ról muszą zostać wykonane ręcznie w portalu Azure po wdrożeniu infrastruktury przez Terraform.
+
+**Wymagane identyfikatory (Principal IDs):**
+- **Container App (`aca-etl-app`) Principal ID**: `3d94e9ab-c27a-4715-a264-2b32097f8c63`
+- **Data Factory (`adf-etl-medallion-processor`) Principal ID**: Należy pobrać z portalu Azure:
+  1. Przejdź do grupy zasobów `rg-etl-project-dev`.
+  2. Otwórz fabrykę danych `adf-etl-medallion-processor`.
+  3. W menu po lewej stronie, w sekcji "Ustawienia", kliknij **Tożsamość**.
+  4. Skopiuj **Identyfikator obiektu (jednostki usługi)**.
+
+### 1. Dostęp Container App do Storage Account
+- **Zasób**: Konto magazynu `stetldatamedallion`
+- **Rola**: `Storage Blob Data Contributor`
+- **Przypisz do**: Tożsamość zarządzana (Managed Identity) -> Container App -> `aca-etl-app`
+
+### 2. Dostęp Container App do Key Vault
+- **Zasób**: Key Vault `kv-medallion-sec`
+- **Rola**: `Key Vault Secrets User`
+- **Przypisz do**: Tożsamość zarządzana (Managed Identity) -> Container App -> `aca-etl-app`
+
+### 3. Dostęp Data Factory do Storage Account
+- **Zasób**: Konto magazynu `stetldatamedallion`
+- **Rola**: `Storage Blob Data Contributor`
+- **Przypisz do**: Tożsamość zarządzana (Managed Identity) -> Data Factory -> `adf-etl-medallion-processor`
