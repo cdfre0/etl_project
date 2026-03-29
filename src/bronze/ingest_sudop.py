@@ -25,7 +25,8 @@ CONFIG = {
     "retry_backoff_seconds": 60,   # Longer delay after a 429 error
     "max_retries": 3,
     "poll_interval_seconds": 15,
-    "max_polls": 12
+    "max_polls": 12,
+    "skip_if_exists": os.getenv("SKIP_IF_EXISTS", "false").lower() == "true"
 }
 
 # --- LOGGING SETUP ---
@@ -256,6 +257,22 @@ def main():
     setup_logging()
     try:
         adls_client = get_adls_client()
+        
+        if CONFIG["skip_if_exists"]:
+            logging.info("SKIP_IF_EXISTS is enabled. Checking if recent files already exist...")
+            latest_dict = get_latest_dictionary_file(adls_client, CONFIG["adls_container_name"], "forma_pomocy")
+            if latest_dict:
+                try:
+                    filename = os.path.basename(latest_dict)
+                    timestamp_str = '_'.join(filename.split('_')[-2:]).split('.')[0]
+                    file_time = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
+                    if datetime.utcnow() - file_time < timedelta(hours=24):
+                        logging.info(f"Recent files found (age: {(datetime.utcnow() - file_time).total_seconds() / 3600:.1f} hours). Skipping ingestion.")
+                        return
+                except (ValueError, IndexError):
+                    pass
+            logging.info("No recent files found. Proceeding with ingestion.")
+        
         ingest_dictionaries(adls_client)
         ingest_cases_by_municipality(adls_client)
         logging.info("--- ETL PROCESS COMPLETED ---")

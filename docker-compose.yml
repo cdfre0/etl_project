@@ -1,8 +1,36 @@
 services:
-  orchestrator:
-    build: .
+  bronze-ingest:
+    build: 
+      context: .
     volumes:
       - .:/workspace
     env_file:
       - .env
     command: python -u src/bronze/ingest_sudop.py
+    profiles:
+      - bronze
+      - all
+
+  curated-transform:
+    build: 
+      context: .
+    volumes:
+      - .:/workspace
+    env_file:
+      - .env
+    command: python -u src/curated/build_curated_sudop.py
+    profiles:
+      - curated
+      - all
+
+  gold-transform:
+    build: 
+      context: .
+    volumes:
+      - .:/workspace
+    env_file:
+      - .env
+    command: python -u src/gold/build_gold_layer.py
+    profiles:
+      - gold
+      - all

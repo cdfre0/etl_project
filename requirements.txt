@@ -5,3 +5,4 @@ azure-keyvault-secrets
 pandas
 python-dotenv
 requests
+pyarrow
