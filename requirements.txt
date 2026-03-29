@@ -1,1 +1,8 @@
 google-genai
+azure-identity
+azure-storage-file-datalake
+azure-keyvault-secrets
+pandas
+python-dotenv
+requests
+pyarrow

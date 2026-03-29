@@ -22,4 +22,27 @@ coverage.xml
 .hypothesis
 .env
 data/
-logs/
+**/.terraform/*
+!.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfplan
+.terraformrc
+terraform.rc
+
+# --- Terraform ---
+# Exclude all Terraform directories and state files, which can contain secrets.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+# Keep the dependency lock file to ensure consistent provider versions.
+!.terraform.lock.hcl

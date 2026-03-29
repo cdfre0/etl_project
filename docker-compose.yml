@@ -1,22 +1,56 @@
 services:
-  etl_agent:
-    build: .
+  bronze-ingest:
+    build: 
+      context: .
     volumes:
       - .:/workspace
+    env_file:
+      - .env
     environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - CEIDG_API_KEY=${CEIDG_API_KEY}
-      - AGENT_ROLE=ETL
-    command: python src/agent.py
-    stdin_open: true
-    tty: true
-  infra_agent:
-    build: .
+      - PYTHONPATH=/workspace/src
+    command: python -u src/bronze/ingest_sudop.py
+    profiles:
+      - bronze
+      - all
+
+  curated-transform:
+    build: 
+      context: .
     volumes:
       - .:/workspace
+    env_file:
+      - .env
     environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - AGENT_ROLE=INFRA
-    command: python src/agent.py
-    stdin_open: true
-    tty: true
+      - PYTHONPATH=/workspace/src
+    command: python -u src/curated/build_curated_sudop.py
+    profiles:
+      - curated
+      - silver
+      - all
+
+  gold-transform:
+    build: 
+      context: .
+    volumes:
+      - .:/workspace
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/workspace/src
+    command: python -u src/gold/build_gold_layer.py
+    profiles:
+      - gold
+      - all
+
+  analysis:
+    build: 
+      context: .
+    volumes:
+      - .:/workspace
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/workspace/src
+    command: python -u analysis/business_check.py
+    profiles:
+      - analysis
