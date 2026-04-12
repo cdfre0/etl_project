@@ -24,11 +24,13 @@ dbt_project_dir = "../../dbt_project"
 # 3. Create a secure environment mapping for dbt execution
 secure_env = os.environ.copy()
 
+import sys
+
 print(f"Launching dbt run against host: {db_host}...")
 
-# 4. Trigger dbt cleanly through Python
+# 4. Trigger dbt cleanly through Python native module
 result = subprocess.run(
-    ["dbt", "run", "--profiles-dir", "."],
+    [sys.executable, "-m", "dbt", "run", "--profiles-dir", "."],
     cwd=dbt_project_dir,
     env=secure_env,
     capture_output=True,

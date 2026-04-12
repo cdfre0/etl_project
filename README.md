@@ -134,10 +134,11 @@ Our robust Databricks implementation uses Databricks-native constraints and dbt 
 Since our Databricks python execution runner utilizes an enterprise `subprocess` execution model, you can safely enforce schema data quality in Azure Data Factory simply by appending a `dbt test` command inside `src/databricks/dbt_runner.py`:
 
 ```python
+import sys
 import subprocess
 
 # Run data quality tests synchronously 
-subprocess.run(["dbt", "test", "--profiles-dir", "."], cwd="../../dbt_project")
+subprocess.run([sys.executable, "-m", "dbt", "test", "--profiles-dir", "."], cwd="../../dbt_project")
 ```
 This guarantees foreign keys, unique row integrity, and null checks on your Gold layer models!
 
