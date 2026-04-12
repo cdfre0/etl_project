@@ -134,7 +134,12 @@ Our robust Databricks implementation uses Databricks-native constraints and dbt 
 Since our Databricks python execution runner utilizes an enterprise `subprocess` execution model, you can safely enforce schema data quality in Azure Data Factory simply by appending a `dbt test` command inside `src/databricks/dbt_runner.py`:
 
 ```python
+import os
 from dbt.cli.main import dbtRunner, dbtRunnerResult
+
+# Prevent Databricks read-only workspace errors by forwarding dbt writes to ephemeral storage
+os.environ["DBT_LOG_PATH"] = "/tmp/dbt_logs"
+os.environ["DBT_TARGET_PATH"] = "/tmp/dbt_target"
 
 # Run data quality tests synchronously using Databricks programmatic Python API
 dbt_project_dir = "../../dbt_project"

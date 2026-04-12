@@ -22,8 +22,11 @@ if not db_host or not db_token:
     raise ValueError("CRITICAL: Databricks dbt variables (DBT_DATABRICKS_HOST, DATABRICKS_TOKEN) not found in the cluster environment!")
 
 # 2. Navigate to the dbt root folder (Python handles relative paths accurately)
-# In standard repos, notebook runs in its folder.
 dbt_project_dir = "../../dbt_project"
+
+# 3. Prevent Databricks read-only workspace errors by forwarding dbt writes to ephemeral storage
+os.environ["DBT_LOG_PATH"] = "/tmp/dbt_logs"
+os.environ["DBT_TARGET_PATH"] = "/tmp/dbt_target"
 
 from dbt.cli.main import dbtRunner, dbtRunnerResult
 
