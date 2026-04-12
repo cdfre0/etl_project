@@ -28,12 +28,14 @@ import sys
 
 print(f"Launching dbt run against host: {db_host}...")
 
-# 4. Trigger dbt cleanly through Python using shell=True to inherit global paths
+# 4. Derive the absolute path of the dbt executable from the active environment
+dbt_executable = os.path.join(os.path.dirname(sys.executable), "dbt")
+
+# Trigger dbt securely with its absolute path
 result = subprocess.run(
-    "dbt run --profiles-dir .",
+    [dbt_executable, "run", "--profiles-dir", "."],
     cwd=dbt_project_dir,
     env=secure_env,
-    shell=True,
     capture_output=True,
     text=True
 )
