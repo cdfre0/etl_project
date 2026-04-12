@@ -137,8 +137,9 @@ Since our Databricks python execution runner utilizes an enterprise `subprocess`
 from dbt.cli.main import dbtRunner, dbtRunnerResult
 
 # Run data quality tests synchronously using Databricks programmatic Python API
+dbt_project_dir = "../../dbt_project"
 dbt = dbtRunner()
-result: dbtRunnerResult = dbt.invoke(["test", "--profiles-dir", ".", "--project-dir", "."], project_dir="../../dbt_project")
+result: dbtRunnerResult = dbt.invoke(["test", "--profiles-dir", dbt_project_dir, "--project-dir", dbt_project_dir])
 ```
 This guarantees foreign keys, unique row integrity, and null checks on your Gold layer models!
 

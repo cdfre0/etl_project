@@ -31,8 +31,11 @@ print(f"Launching dbt run programmatically against host: {db_host}...")
 
 # 3. Trigger dbt cleanly through the natively attached Python package programmatic API
 dbt = dbtRunner()
-result: dbtRunnerResult = dbt.invoke(["run", "--profiles-dir", ".", "--project-dir", "."], 
-                                     project_dir=dbt_project_dir)
+
+# Explicitly pass the project directory to both configurations, replacing the need for subprocess `cwd` tracking
+result: dbtRunnerResult = dbt.invoke(
+    ["run", "--profiles-dir", dbt_project_dir, "--project-dir", dbt_project_dir]
+)
 
 # 4. Check for ungraceful failures
 if not result.success:
