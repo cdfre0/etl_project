@@ -31,7 +31,7 @@ resource "azurerm_data_factory" "adf" {
   name                = var.data_factory_name
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
-  
+
   identity {
     type = "SystemAssigned"
   }
@@ -42,25 +42,49 @@ resource "azurerm_data_factory" "adf" {
   }
 }
 
+resource "azurerm_databricks_workspace" "dbw" {
+  name                = var.databricks_workspace_name
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  sku                 = "standard"
+
+  tags = {
+    environment = "dev"
+    project     = "etl_medallion"
+  }
+}
+
+resource "azurerm_data_factory_linked_service_azure_databricks" "adf_to_dbw" {
+  name            = "ADFLinkedServiceAzureDatabricks"
+  data_factory_id = azurerm_data_factory.adf.id
+  description     = "Linked service for Databricks."
+  adb_domain      = "https://${azurerm_databricks_workspace.dbw.workspace_url}"
+
+  # Connect to the manually created Databricks 
+  access_token = "dummy-token-set-via-env-locally"
+
+  existing_cluster_id = "0411-104634-ir763chs"
+}
+
 resource "azurerm_key_vault" "kv" {
-  name                        = var.key_vault_name
-  location                    = azurerm_resource_group.rg.location
-  resource_group_name         = azurerm_resource_group.rg.name
-  tenant_id                   = data.azurerm_client_config.current.tenant_id
-  sku_name                    = "standard"
-  soft_delete_retention_days  = 7
-  
+  name                       = var.key_vault_name
+  location                   = azurerm_resource_group.rg.location
+  resource_group_name        = azurerm_resource_group.rg.name
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = "standard"
+  soft_delete_retention_days = 7
+
   access_policy {
-    tenant_id = data.azurerm_client_config.current.tenant_id
-    object_id = data.azurerm_client_config.current.object_id
+    tenant_id           = data.azurerm_client_config.current.tenant_id
+    object_id           = data.azurerm_client_config.current.object_id
     key_permissions     = ["Get"]
     secret_permissions  = ["Get", "List", "Set", "Delete"]
     storage_permissions = ["Get"]
   }
 
   access_policy {
-    tenant_id = data.azurerm_client_config.current.tenant_id
-    object_id = azurerm_data_factory.adf.identity[0].principal_id
+    tenant_id          = data.azurerm_client_config.current.tenant_id
+    object_id          = azurerm_data_factory.adf.identity[0].principal_id
     secret_permissions = ["Get", "List"]
   }
 
@@ -124,7 +148,7 @@ resource "azurerm_container_app" "etl_app" {
     external_enabled = true
     target_port      = 80
     traffic_weight {
-      percentage = 100
+      percentage      = 100
       latest_revision = true
     }
   }

@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: silver
+    description: "Silver layer containing cleaned data"
+    tables:
+      - name: przypadki_pomocy
+        description: "All aid cases consolidated"
+      - name: slownik_gmina_siedziby
+        description: "Dictionary of municipalities"

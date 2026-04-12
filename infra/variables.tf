@@ -22,6 +22,12 @@ variable "data_factory_name" {
   default     = "adf-etl-medallion-processor" # Note: This will be suffixed with a random string to ensure uniqueness
 }
 
+variable "databricks_workspace_name" {
+  description = "Name of the Azure Databricks workspace."
+  type        = string
+  default     = "dbw-etl-medallion"
+}
+
 variable "key_vault_name" {
   description = "Name of the Azure Key Vault."
   type        = string

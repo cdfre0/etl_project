@@ -8,58 +8,61 @@ The architecture follows a classic ETL pattern orchestrated within a Docker envi
 
 ```mermaid
 graph TD
-    subgraph "Local Development / CI/CD"
-        A[Developer] -- Interacts via --> C[Docker Compose];
-        C -- Builds --> I[ETL Docker Image];
-        I -- Pushed to --> ACR[Azure Container Registry];
+    subgraph "Infrastructure Provisioning"
+        TF[Terraform] -- Provisions --> AzureResources;
     end
 
-    subgraph "Azure Cloud Environment"
-        subgraph "ETL Execution"
-            ACA[Azure Container App] -- Pulls image from --> ACR;
-            ACA -- Runs ETL jobs --> DLake;
+    subgraph "AzureResources" [Azure Cloud Environment]
+        subgraph "Orchestration"
+            ADF[Azure Data Factory]
         end
 
-        subgraph "Data Storage (Medallion Architecture)"
+        subgraph "Data Storage"
             DLake[Azure Data Lake Storage Gen2];
-            DLake -- Contains --> B[Bronze Container];
-            DLake -- Contains --> S[Silver Container];
-            DLake -- Contains --> G[Gold Container];
+            B[Bronze: Raw JSON]
+            S[Silver: Delta Tables]
+            G[Gold: Star Schema Delta]
+            DLake --> B & S & G
         end
 
-        subgraph "External Source"
-            API[SUDOP API];
+        subgraph "Scalable Processing Engine"
+            ADB[Azure Databricks]
+            PYSPARK[PySpark Notebook]
+            DBT[dbt Models]
+            ADB --> PYSPARK
+            ADB --> DBT
         end
     end
 
-    subgraph "Data Flow"
-        API -- 1. Ingestion --> B;
-        B -- "2. Transformation (Clean & Structure)" --> S;
-        S -- "3. Transformation (Model & Aggregate)" --> G;
+    subgraph "External Source"
+        API[SUDOP API]
     end
-    
+
+    API -- "1. Ingest" --> B
+    ADF -- "Triggers" --> PYSPARK
+    PYSPARK -- "2. Clean & Transform" --> B
+    PYSPARK -- "Writes" --> S
+    ADF -- "Triggers" --> DBT
+    DBT -- "3. Star Schema Modeling" --> S
+    DBT -- "Writes" --> G
+
     style B fill:#CD7F32,stroke:#333,stroke-width:2px
     style S fill:#C0C0C0,stroke:#333,stroke-width:2px
     style G fill:#FFD700,stroke:#333,stroke-width:2px
+    style ADF fill:#0078D4,stroke:#333,stroke-width:2px,color:#fff
+    style ADB fill:#FF3621,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 ## Component Breakdown
 
-1.  **Docker Environment:**
-    *   **Docker Compose:** The primary tool for local development and orchestration. It defines three separate services (`bronze-ingest`, `curated-transform`, `gold-transform`) that can be run independently or together.
-    *   **Dockerfile:** Defines the environment for the ETL application, installing Python, Azure CLI, Terraform, and all necessary Python libraries.
-
+1.  **Orchestration (Azure Data Factory):** The central orchestrator that triggers and monitors the end-to-end data pipeline, kicking off Databricks notebooks.
 2.  **Azure Infrastructure (Managed by Terraform):**
-    *   **Azure Data Lake Storage (ADLS) Gen2:** The core of our data platform, separated into three containers (`bronze`, `silver`, `gold`) that correspond to the layers of the Medallion Architecture.
-    *   **Azure Container Registry (ACR):** A private Docker registry used to store the ETL application image, making it ready for cloud execution.
-    *   **Azure Container App (ACA):** A serverless container runtime that executes our ETL jobs. It pulls the image from ACR and is configured with the necessary environment variables (like the storage connection string) to run.
-
-3.  **ETL Scripts (Python):**
-    *   **Bronze (`ingest_sudop.py`):** Connects to the external SUDOP API, handles rate limiting and retries, and lands the raw JSON data in the `bronze` container.
-    *   **Silver (`build_curated_sudop.py`):** Reads from the bronze layer, cleans the data, casts data types, and structures it into separate, queryable Parquet tables in the `silver` container based on the `metadata.json` contract.
-    *   **Gold (`build_gold_layer.py`):** Reads from the silver layer and builds a final, analytics-ready star schema, writing the `fact` and `dim` tables as Parquet files to the `gold` container.
-
-## Data Flow Summary
+    *   **Azure Data Lake Storage (ADLS) Gen2:** The core of our Medallion Architecture.
+    *   **Azure Databricks:** Scalable Apache Spark environment for transformation.
+3.  **ETL Scripts:**
+    *   **Bronze Ingestion (Python Container):** Connects to the external SUDOP API, handles rate limiting, and lands raw JSON in the `bronze` container.
+    *   **Silver Transformation (PySpark notebook):** Reads from the bronze layer, cleans data idempotently, and structures it into Delta tables in the `silver` container.
+    *   **Gold Transformation (dbt on Databricks):** Declarative SQL models run via dbt to build the final star schema (fact and dim tables) as Delta tables in `gold`.
 
 1.  The **Bronze** job runs, pulling data from the SUDOP API and storing it as raw JSON in ADLS.
 2.  The **Silver** job runs, reading the raw JSON, cleaning it, and saving it as structured Parquet files.
