@@ -24,10 +24,9 @@ if not db_host or not db_token:
 # 2. Configure dbt project location
 dbt_project_dir = "../../dbt_project"
 
-# 3. Create a secure environment mapping for dbt execution
-secure_env = os.environ.copy()
-secure_env["DBT_LOG_PATH"] = "/tmp/dbt_logs"
-secure_env["DBT_TARGET_PATH"] = "/tmp/dbt_target"
+# 3. Prevent Databricks read-only workspace errors by forwarding dbt writes to ephemeral storage
+os.environ["DBT_LOG_PATH"] = "/tmp/dbt_logs"
+os.environ["DBT_TARGET_PATH"] = "/tmp/dbt_target"
 
 print(f"Launching dbt run against host: {db_host}...")
 
