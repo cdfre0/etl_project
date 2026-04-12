@@ -46,7 +46,8 @@ graph TD
 
 3.  **Gold Layer (Analytical Data):**
     *   **Purpose:** Creates a highly refined, aggregated data model optimized for business intelligence and analytics.
-    *   **Format:** Columnar Parquet files.
+    *   **Format:** Columnar Parquet files deployed natively as Databricks Delta Tables.
+    *   **Location:** Securely physicalized inside the external Azure Data Lake Storage `gold` blob container and synchronously connected to the Databricks SQL Hive Catalog.
     *   **Structure:** A **Star Schema** with a central fact table and multiple dimension tables, perfect for BI tools like Power BI or Tableau.
         *   `fact_przypadki_pomocy`: Contains numeric measures and keys.
         *   `dim_beneficjent`, `dim_data`, `dim_geografia`, etc.: Descriptive dimension tables.

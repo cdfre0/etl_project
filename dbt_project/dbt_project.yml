@@ -20,3 +20,4 @@ models:
     gold:
       +materialized: table
       +file_format: delta
+      +location_root: "abfss://gold@stetldatamedallion.dfs.core.windows.net/"
