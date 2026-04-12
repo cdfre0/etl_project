@@ -7,9 +7,13 @@
 
 # COMMAND ----------
 
-import os
-import subprocess
+# COMMAND ----------
 
+# MAGIC %pip install dbt-core dbt-databricks databricks-sql-connector
+
+# COMMAND ----------
+
+import os
 # 1. Grab the secure credentials from the cluster environment
 db_host = os.environ.get("DBT_DATABRICKS_HOST")
 db_token = os.environ.get("DATABRICKS_TOKEN")
@@ -27,26 +31,19 @@ secure_env["DBT_TARGET_PATH"] = "/tmp/dbt_target"
 
 print(f"Launching dbt run against host: {db_host}...")
 
-# 4. Trigger dbt through the resilient Cluster Base Environment by sourcing Databricks profiles natively
-bash_script = f"""
-source /etc/profile
-dbt run --profiles-dir {dbt_project_dir} --project-dir {dbt_project_dir}
-"""
+from dbt.cli.main import dbtRunner, dbtRunnerResult
 
-result = subprocess.run(
-    bash_script,
-    shell=True,
-    executable="/bin/bash",
-    env=secure_env,
-    capture_output=True,
-    text=True
+print(f"Launching dbt run programmatically against host: {db_host}...")
+
+# 4. Trigger dbt cleanly through the natively attached Python programmatic API
+dbt = dbtRunner()
+
+result: dbtRunnerResult = dbt.invoke(
+    ["run", "--profiles-dir", dbt_project_dir, "--project-dir", dbt_project_dir]
 )
 
-print(result.stdout)
-
 # 4. Check for ungraceful failures
-if result.returncode != 0:
-    print(result.stderr)
+if not result.success:
     raise Exception("DBT Run Failed!")
 
 print("✅ DBT Models successfully built!")
