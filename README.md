@@ -135,14 +135,10 @@ Since our Databricks python execution runner utilizes an enterprise `subprocess`
 
 ```python
 import sys
-import os
 import subprocess
 
-# Securely derive absolute executable path
-dbt_executable = os.path.join(os.path.dirname(sys.executable), "dbt")
-
 # Run data quality tests synchronously 
-subprocess.run([dbt_executable, "test", "--profiles-dir", "."], cwd="../../dbt_project")
+subprocess.run([sys.executable, "-m", "dbt", "test", "--profiles-dir", "."], cwd="../../dbt_project")
 ```
 This guarantees foreign keys, unique row integrity, and null checks on your Gold layer models!
 

@@ -7,6 +7,10 @@
 
 # COMMAND ----------
 
+# MAGIC %pip install dbt-core dbt-databricks
+
+# COMMAND ----------
+
 import os
 import subprocess
 
@@ -28,12 +32,9 @@ import sys
 
 print(f"Launching dbt run against host: {db_host}...")
 
-# 4. Derive the absolute path of the dbt executable from the active environment
-dbt_executable = os.path.join(os.path.dirname(sys.executable), "dbt")
-
-# Trigger dbt securely with its absolute path
+# 4. Trigger dbt cleanly through the natively attached Python package module
 result = subprocess.run(
-    [dbt_executable, "run", "--profiles-dir", "."],
+    [sys.executable, "-m", "dbt", "run", "--profiles-dir", "."],
     cwd=dbt_project_dir,
     env=secure_env,
     capture_output=True,
