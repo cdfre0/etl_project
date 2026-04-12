@@ -7,12 +7,39 @@
 
 # COMMAND ----------
 
-# MAGIC %sh
-# MAGIC # Navigate to the dbt project directory
-# MAGIC cd /Workspace/Users/s36436@pjwstk.edu.pl/etl_project/dbt_project
-# MAGIC 
-# MAGIC # Install specific dbt adapter for databricks if needed
-# MAGIC # pip install dbt-databricks
-# MAGIC 
-# MAGIC # Run dbt
-# MAGIC dbt run --profiles-dir .
+import os
+import subprocess
+
+# 1. Grab the secure credentials from the cluster environment
+db_host = os.environ.get("DBT_DATABRICKS_HOST")
+db_token = os.environ.get("DATABRICKS_TOKEN")
+
+if not db_host or not db_token:
+    raise ValueError("CRITICAL: Databricks dbt variables (DBT_DATABRICKS_HOST, DATABRICKS_TOKEN) not found in the cluster environment!")
+
+# 2. Navigate to the dbt root folder (Python handles relative paths accurately)
+# In standard repos, notebook runs in its folder.
+dbt_project_dir = "../../dbt_project"
+
+# 3. Create a secure environment mapping for dbt execution
+secure_env = os.environ.copy()
+
+print(f"Launching dbt run against host: {db_host}...")
+
+# 4. Trigger dbt cleanly through Python
+result = subprocess.run(
+    ["dbt", "run", "--profiles-dir", "."],
+    cwd=dbt_project_dir,
+    env=secure_env,
+    capture_output=True,
+    text=True
+)
+
+# 5. Print the output gracefully
+print(result.stdout)
+
+if result.returncode != 0:
+    print(result.stderr)
+    raise Exception("DBT Run Failed!")
+
+print("✅ DBT Models successfully built!")

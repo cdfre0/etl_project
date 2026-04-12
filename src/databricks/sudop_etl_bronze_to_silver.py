@@ -10,11 +10,19 @@
 from pyspark.sql.functions import col, current_timestamp, to_date, input_file_name, regexp_extract
 import os
 
-# Configure ADLS Gen2 connection (assuming credentials are set in the cluster configuration or secret scope)
-# For Azure Student subscription, you might use a SAS token or access key defined securely.
-storage_account_name = "stetldatamedallion"  # Should be passed as parameter/widget in real run
+# Configure ADLS Gen2 connection dynamically via widgets or fallback
+try:
+    dbutils.widgets.text("storage_account", "stetldatamedallion", "Storage Account Name")
+    storage_account_name = dbutils.widgets.get("storage_account")
+except Exception:
+    # Fallback if run outside a standard Databricks interactive context
+    storage_account_name = "stetldatamedallion"
+
 bronze_path = f"abfss://bronze@{storage_account_name}.dfs.core.windows.net/"
 silver_path = f"abfss://silver@{storage_account_name}.dfs.core.windows.net/"
+
+# Ensure the silver database exists in the metastore
+spark.sql("CREATE DATABASE IF NOT EXISTS silver")
 
 # COMMAND ----------
 
@@ -62,16 +70,13 @@ if "wyniki" in cases_raw_df.columns:
     cases_df = cases_df.withColumn("_source_file", input_file_name())
     cases_df = cases_df.withColumn("_curated_at", current_timestamp())
 
-    # Write idempotently to Delta
+    # Write idempotently to Delta and register as an external table
     print("Writing Cases to Silver Delta table...")
     cases_df.write \
       .format("delta") \
       .mode("overwrite") \
-      .save(f"{silver_path}przypadki_pomocy")
-    
-    # Register the table in the Databricks Metastore so dbt can query it
-    spark.sql("CREATE DATABASE IF NOT EXISTS silver")
-    spark.sql(f"CREATE TABLE IF NOT EXISTS silver.przypadki_pomocy USING DELTA LOCATION '{silver_path}przypadki_pomocy'")
+      .option("path", f"{silver_path}przypadki_pomocy") \
+      .saveAsTable("silver.przypadki_pomocy")
 else:
     print("No valid cases found in Bronze layer.")
 
@@ -103,13 +108,11 @@ if "name" in dict_raw_df.columns and "number" in dict_raw_df.columns:
     for d_type in dict_types:
         d_df = dict_df.filter(col("dict_type") == d_type).drop("dict_type")
         print(f"Writing {d_type} to Silver Delta table...")
+        # Write and register external table natively
         d_df.write \
           .format("delta") \
           .mode("overwrite") \
-          .save(f"{silver_path}{d_type}")
-          
-        # Register in Databricks Metastore
-        spark.sql("CREATE DATABASE IF NOT EXISTS silver")
-        spark.sql(f"CREATE TABLE IF NOT EXISTS silver.{d_type} USING DELTA LOCATION '{silver_path}{d_type}'")
+          .option("path", f"{silver_path}{d_type}") \
+          .saveAsTable(f"silver.{d_type}")
 
 print("Bronze to Silver process complete.")

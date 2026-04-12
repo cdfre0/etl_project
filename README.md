@@ -102,15 +102,6 @@ Click **Debug** or **Trigger Now** on the pipeline in Azure Data Factory to watc
 
 ---
 
-## Local Docker Legacy (Optional)
-
-If you prefer testing heavily locally without Databricks, the codebase still contains the legacy Docker Compose approach.
-```bash
-docker compose --profile all up --build
-```
-
----
-
 ## Infrastructure as Code (Terraform)
 
 The Azure infrastructure for this project is fully defined and managed using Terraform. The configuration files are located in the `infra/` directory.
@@ -123,7 +114,6 @@ The Terraform script provisions the following key Azure resources:
 *   **Azure Data Lake Storage Gen2:** The core storage for all data layers, with `bronze`, `silver`, and `gold` containers.
 *   **Azure Data Factory:** Visual orchestrator spanning Databricks workflows.
 *   **Azure Databricks Workspace:** A scalable Spark compute engine dynamically provisioned for data modeling.
-*   *Legacy:* Azure Container Registry, Apps, and Key Vault are additionally defined if you wish to run the older Python-only versions.
 
 ### How to Deploy the Infrastructure
 
