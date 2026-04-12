@@ -25,27 +25,17 @@ if not db_host or not db_token:
 # In standard repos, notebook runs in its folder.
 dbt_project_dir = "../../dbt_project"
 
-# 3. Create a secure environment mapping for dbt execution
-secure_env = os.environ.copy()
+from dbt.cli.main import dbtRunner, dbtRunnerResult
 
-import sys
+print(f"Launching dbt run programmatically against host: {db_host}...")
 
-print(f"Launching dbt run against host: {db_host}...")
+# 3. Trigger dbt cleanly through the natively attached Python package programmatic API
+dbt = dbtRunner()
+result: dbtRunnerResult = dbt.invoke(["run", "--profiles-dir", ".", "--project-dir", "."], 
+                                     project_dir=dbt_project_dir)
 
-# 4. Trigger dbt cleanly through the natively attached Python package module
-result = subprocess.run(
-    [sys.executable, "-m", "dbt", "run", "--profiles-dir", "."],
-    cwd=dbt_project_dir,
-    env=secure_env,
-    capture_output=True,
-    text=True
-)
-
-# 5. Print the output gracefully
-print(result.stdout)
-
-if result.returncode != 0:
-    print(result.stderr)
+# 4. Check for ungraceful failures
+if not result.success:
     raise Exception("DBT Run Failed!")
 
 print("✅ DBT Models successfully built!")
