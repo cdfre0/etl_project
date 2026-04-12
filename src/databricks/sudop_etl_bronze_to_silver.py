@@ -68,6 +68,10 @@ if "wyniki" in cases_raw_df.columns:
       .format("delta") \
       .mode("overwrite") \
       .save(f"{silver_path}przypadki_pomocy")
+    
+    # Register the table in the Databricks Metastore so dbt can query it
+    spark.sql("CREATE DATABASE IF NOT EXISTS silver")
+    spark.sql(f"CREATE TABLE IF NOT EXISTS silver.przypadki_pomocy USING DELTA LOCATION '{silver_path}przypadki_pomocy'")
 else:
     print("No valid cases found in Bronze layer.")
 
@@ -103,5 +107,9 @@ if "name" in dict_raw_df.columns and "number" in dict_raw_df.columns:
           .format("delta") \
           .mode("overwrite") \
           .save(f"{silver_path}{d_type}")
+          
+        # Register in Databricks Metastore
+        spark.sql("CREATE DATABASE IF NOT EXISTS silver")
+        spark.sql(f"CREATE TABLE IF NOT EXISTS silver.{d_type} USING DELTA LOCATION '{silver_path}{d_type}'")
 
 print("Bronze to Silver process complete.")

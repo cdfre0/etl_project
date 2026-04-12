@@ -61,7 +61,7 @@ resource "azurerm_data_factory_linked_service_azure_databricks" "adf_to_dbw" {
   adb_domain      = "https://${azurerm_databricks_workspace.dbw.workspace_url}"
 
   # Connect to the manually created Databricks 
-  access_token = "dummy-token-set-via-env-locally"
+  access_token = "databricks_env_token"
 
   existing_cluster_id = "0411-104634-ir763chs"
 }

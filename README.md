@@ -49,78 +49,54 @@ graph TD
 
 ### Prerequisites
 
-*   Docker and Docker Compose
 *   An Azure subscription
-*   An Azure Storage Account with Data Lake Storage Gen2 enabled.
+*   An Azure Storage Account with Data Lake Storage Gen2 enabled (`bronze`, `silver`, `gold` containers).
+*   Azure Databricks Workspace (Standard or Premium)
+*   Azure Data Factory
 
 ### Environment Setup
 
 1.  Clone the repository.
 2.  Create a file named `.env` in the project root.
-3.  Add your Azure Storage connection string to this file:
+3.  Add your Azure Storage connection string and Databricks configuration:
     ```
     AZURE_STORAGE_CONNECTION_STRING="your_storage_account_connection_string"
+    DBT_DATABRICKS_HOST="adb-xxxxxx.azuredatabricks.net"
+    DBT_DATABRICKS_HTTP_PATH="sql/protocolv1/o/..."
+    DATABRICKS_TOKEN="your-databricks-personal-access-token"
     ```
-4. Make sure you have `bronze`, `silver`, and `gold` containers in your storage account.
+4. Set up a Databricks Repo inside your Databricks workspace targeting your GitHub fork of this repository.
 
 ---
 
 ## Running the ETL Pipeline
 
-The entire pipeline is managed through Docker Compose and is divided into profiles, allowing you to run each stage independently.
+This project relies on Azure Data Factory to orchestrate Databricks Notebooks and dbt!
 
-### 1. Run Bronze Ingestion
+### 1. Configure the Orchestrator
+Inside Azure Data Factory Studio, create a Linked Service to Azure Databricks (Compute tab) using your `DATABRICKS_TOKEN`. 
 
-This step connects to the SUDOP API, downloads the dictionary and case files, and uploads them as raw JSON to the `bronze` container.
+### 2. Set up the Pipeline
+Create a new pipeline in Azure Data Factory with two **Notebook Activities**:
 
-```bash
-docker compose --profile bronze up --build
-```
+#### Activity 1: Bronze to Silver (Spark)
+- **Path**: `/Workspace/Users/your.email@domain.com/etl_project/src/databricks/sudop_etl_bronze_to_silver`
+- This step reads raw JSON from the `bronze` container, applies heavy data cleaning and structuring, and outputs idempotent Delta Parquet tables into the `silver` container.
 
-**Smart Skip Feature:** To avoid re-downloading data you've recently fetched, you can set the `SKIP_IF_EXISTS=true` environment variable. It will skip the download if the newest file in the `bronze/dictionaries` folder is less than 24 hours old.
+#### Activity 2: Silver to Gold (dbt)
+- **Path**: `/Workspace/Users/your.email@domain.com/etl_project/src/databricks/dbt_runner`
+- This notebook implicitly executes `dbt run --profiles-dir .` against the `dbt_project/` folder in your Databricks repo, dynamically building the analytical Star Schema as Delta tables in the `gold` container!
 
-```bash
-# Example for PowerShell
-$env:SKIP_IF_EXISTS="true"; docker compose --profile bronze up
-
-# Example for bash
-SKIP_IF_EXISTS=true docker compose --profile bronze up
-```
-
-### 2. Run Silver (Curated) Transformation
-
-This step reads the raw JSON from the `bronze` container, cleans and structures it according to the rules in `src/curated/metadata.json`, and saves the output as Parquet files in the `silver` container.
-
-```bash
-docker compose --profile curated up --build
-```
-
-### 3. Run Gold (Analytical) Transformation
-
-This step reads the clean Parquet files from the `silver` container, builds the star schema (fact and dimension tables), and saves them as Parquet files in the `gold` container.
-
-```bash
-docker compose --profile gold up --build
-```
-
-### Run the Full Pipeline
-
-To run all three stages in sequence (Bronze -> Silver -> Gold), use the `all` profile.
-
-```bash
-docker compose --profile all up --build
-```
+### 3. Run It!
+Click **Debug** or **Trigger Now** on the pipeline in Azure Data Factory to watch the highly scalable cluster process your data into ready-to-query models.
 
 ---
 
-## Running the Analysis
+## Local Docker Legacy (Optional)
 
-After running the full pipeline, you can execute a sample analysis script that demonstrates how to query and use the gold layer tables.
-
-This script connects to your data lake, loads the `fact_przypadki_pomocy` and `dim_geografia` tables, and calculates the total aid amount for the top 20 municipalities.
-
+If you prefer testing heavily locally without Databricks, the codebase still contains the legacy Docker Compose approach.
 ```bash
-docker compose --profile analysis up --build
+docker compose --profile all up --build
 ```
 
 ---
@@ -134,12 +110,10 @@ The Azure infrastructure for this project is fully defined and managed using Ter
 The Terraform script provisions the following key Azure resources:
 
 *   **Resource Group:** A logical container for all project resources (`rg-etl-project-dev`).
-*   **Azure Data Lake Storage Gen2:** The core storage for all data layers, with `bronze`, `silver`, and `gold` containers created automatically.
-*   **Azure Container Registry:** To store and manage the Docker image for the ETL application.
-*   **Azure Container App Environment:** A dedicated and isolated environment to run the containerized ETL jobs.
-*   **Azure Container App:** The application that runs the ETL code from the Docker image.
-*   **Azure Key Vault:** For securely storing secrets like the storage connection string (though not fully automated in this version).
-*   **Azure Data Factory:** Included for future orchestration needs (currently not used by the Docker-based pipeline).
+*   **Azure Data Lake Storage Gen2:** The core storage for all data layers, with `bronze`, `silver`, and `gold` containers.
+*   **Azure Data Factory:** Visual orchestrator spanning Databricks workflows.
+*   **Azure Databricks Workspace:** A scalable Spark compute engine dynamically provisioned for data modeling.
+*   *Legacy:* Azure Container Registry, Apps, and Key Vault are additionally defined if you wish to run the older Python-only versions.
 
 ### How to Deploy the Infrastructure
 
@@ -201,3 +175,4 @@ For more detailed information, please refer to the documents in the `documentati
 The final, analytics-ready tables are stored in the `gold` container. For sample queries that demonstrate how to join the fact and dimension tables to answer business questions, see the `analysis/` directory:
 
 *   **[Sample Queries](./analysis/sample_queries.sql):** Example SQL queries for use in an analytics platform like Azure Synapse, Databricks, or DuckDB.
+
