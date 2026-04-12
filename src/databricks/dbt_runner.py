@@ -38,8 +38,13 @@ if not db_host or not db_token:
     raise ValueError("CRITICAL: Missing Cluster Environment Variables (DBT_DATABRICKS_HOST, DATABRICKS_TOKEN)!")
 
 # 2. Configure project paths
-# Relative path from the notebook location to the dbt project folder
 dbt_project_dir = "../../dbt_project"
+storage_account_name = "stetldatamedallion" 
+
+# 3. Explicitly initialize the gold schema in metastore to point to ADLS
+# This prevents DELTA_TABLE_LOCATION_MISMATCH by defining the location at the schema level
+gold_location = f"abfss://gold@{storage_account_name}.dfs.core.windows.net/"
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS gold LOCATION '{gold_location}'")
 
 print(f"Launching dbt run against host: {db_host}...")
 

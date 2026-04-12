@@ -163,7 +163,7 @@ Ensure millions of rows correctly aggregated to the dimension mappings without n
 SELECT 
     COUNT(*) as Total_Facts,
     SUM(wartosc_brutto_pln) as Total_Financial_Aid_Disbursed
-FROM default.fact_przypadki_pomocy;
+FROM gold.fact_przypadki_pomocy;
 ```
 
 **2. Verifying the Business Value (Top Beneficiaries Check):**
@@ -174,8 +174,8 @@ SELECT
     b.wielkosc_beneficjenta_nazwa as Company_Size,
     COUNT(f.beneficjent_id) as Number_Of_Aid_Cases,
     CAST(SUM(f.wartosc_brutto_pln) AS DECIMAL(18,2)) as Total_Aid_PLN
-FROM default.fact_przypadki_pomocy f
-JOIN default.dim_beneficjent b ON f.beneficjent_id = b.beneficjent_id
+FROM gold.fact_przypadki_pomocy f
+JOIN gold.dim_beneficjent b ON f.beneficjent_id = b.beneficjent_id
 GROUP BY b.nazwa_beneficjenta, b.wielkosc_beneficjenta_nazwa
 ORDER BY Total_Aid_PLN DESC
 LIMIT 10;
