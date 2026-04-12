@@ -8,20 +8,28 @@ The pipeline is structured into three distinct layers, each serving a specific p
 
 ```mermaid
 graph TD
-    A[SUDOP API] --> B[Bronze Layer];
-    B --> C[Silver Layer];
-    C --> D[Gold Layer];
-    D --> E[Analytics / BI Tools];
-
-    subgraph "Azure Data Lake Storage"
-        B(Raw JSON Files);
-        C(Cleaned Parquet Files);
-        D(Star Schema Parquet);
+    A[SUDOP API] -->|ingest_sudop.py| B[(Bronze Layer: Raw JSON)];
+    B -->|PySpark Data Cleanse| C[(Silver Layer: Clean Parquet)];
+    C -->|dbt Build Models| D[(Gold Layer: Star Schema)];
+    
+    subgraph "Azure Databricks Execution"
+        E(sudop_etl_bronze_to_silver.py);
+        F(dbt_runner.py);
     end
 
-    style B fill:#CD7F32,stroke:#333,stroke-width:2px
-    style C fill:#C0C0C0,stroke:#333,stroke-width:2px
-    style D fill:#FFD700,stroke:#333,stroke-width:2px
+    E -.->|Reads ADLS| B
+    E -.->|Writes & Registers Metastore| C
+    F -.->|Compiles via Databricks SQL| C
+    F -.->|Materializes External Tables| D
+
+    subgraph "Azure Data Factory"
+        trigger((Schedule/Trigger)) --> E
+        E --> F
+    end
+
+    style B fill:#CD7F32,stroke:#333
+    style C fill:#C0C0C0,stroke:#333
+    style D fill:#FFD700,stroke:#333
 ```
 
 1.  **Bronze Layer (Raw Data):**
@@ -97,8 +105,26 @@ Create a new pipeline in Azure Data Factory with two **Notebook Activities**:
 - **Path**: `/Workspace/Users/your.email@domain.com/etl_project/src/databricks/dbt_runner`
 - To maintain security and execution context in a scalable cloud setting, this notebook executes a Python `subprocess` to natively pull securely-passed cluster environment variables, and executes `dbt run` to dynamically build the analytical Star Schema as Delta tables!
 
-### 3. Run It!
+### 4. Run It!
 Click **Debug** or **Trigger Now** on the pipeline in Azure Data Factory to watch the highly scalable cluster process your data into ready-to-query models.
+
+---
+
+## Operational Showcase
+
+Here are live examples of the pipeline executing beautifully in the cloud environment:
+
+### Azure Data Factory Orchestration
+Data Factory seamlessly triggers the two-notebook lineage (Bronze to Silver -> Silver to Gold).
+![ADF Pipeline Run](assets/adf_pipeline.png)
+
+### Databricks Execution
+The exact jobs spun up correctly in the Databricks pipeline viewer without failure.
+![Databricks Jobs Screen](assets/databricks_jobs.png)
+
+### Gold Layer Analytics Ready
+Once successfully built, the Databricks SQL catalog natively exposes the generated Star Schema to powerful queries!
+![Databricks SQL Table View](assets/databricks_sql.png)
 
 ---
 
