@@ -28,11 +28,12 @@ import sys
 
 print(f"Launching dbt run against host: {db_host}...")
 
-# 4. Trigger dbt cleanly through Python native module
+# 4. Trigger dbt cleanly through Python using shell=True to inherit global paths
 result = subprocess.run(
-    [sys.executable, "-m", "dbt", "run", "--profiles-dir", "."],
+    "dbt run --profiles-dir .",
     cwd=dbt_project_dir,
     env=secure_env,
+    shell=True,
     capture_output=True,
     text=True
 )
