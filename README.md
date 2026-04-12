@@ -132,17 +132,20 @@ Once successfully built, the Databricks SQL catalog natively exposes the generat
 Our robust Databricks implementation uses Databricks-native constraints and dbt validation!
 
 ### Automated Validation (dbt test)
-Since our Databricks python execution runner utilizes an enterprise `subprocess` execution model, you can safely enforce schema data quality in Azure Data Factory simply by appending a `dbt test` command inside `src/databricks/dbt_runner.py`:
+### Automated Validation (dbt test)
+The pipeline includes built-in data quality testing. In the `dbt_runner.py` notebook, we use the Databricks **Programmatic Python API** (`dbtRunner`). 
+
+Because Databricks requires a kernel refresh to see newly installed libraries (like `databricks-sql-connector`), the runner is structured into three stages:
+1.  **Install**: `%pip install dbt-databricks databricks-sql-connector`
+2.  **Restart**: `dbutils.library.restartPython()`
+3.  **Execute**: Native Python call to `dbtRunner().invoke(["test", ...])`
+
+This ensures that the SQL connector is always loaded and valid before the tests run.
 
 ```python
-import os
 from dbt.cli.main import dbtRunner, dbtRunnerResult
 
-# Prevent Databricks read-only workspace errors by forwarding dbt writes to unrestricted ephemeral storage
-os.environ["DBT_LOG_PATH"] = "/tmp/dbt_logs"
-os.environ["DBT_TARGET_PATH"] = "/tmp/dbt_target"
-
-# Run data quality tests synchronously using Databricks programmatic Python API
+# The dbt_runner.py notebook automatically handles the environment refresh!
 dbt_project_dir = "../../dbt_project"
 dbt = dbtRunner()
 result: dbtRunnerResult = dbt.invoke(["test", "--profiles-dir", dbt_project_dir, "--project-dir", dbt_project_dir])
