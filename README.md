@@ -76,16 +76,26 @@ This project relies on Azure Data Factory to orchestrate Databricks Notebooks an
 ### 1. Configure the Orchestrator
 Inside Azure Data Factory Studio, create a Linked Service to Azure Databricks (Compute tab) using your `DATABRICKS_TOKEN`. 
 
-### 2. Set up the Pipeline
+### 2. Set Up Cluster Environment Variables
+For secure execution of the pipeline (especially `dbt`), you must configure credentials natively into your cluster:
+1. Navigate to your Databricks Cluster -> **Edit** -> **Advanced options** -> **Environment variables**.
+2. Add the following keys (without quotes):
+   ```text
+   DBT_DATABRICKS_HOST=adb-xxxxxx.azuredatabricks.net
+   DBT_DATABRICKS_HTTP_PATH=sql/protocolv1/o/...
+   DATABRICKS_TOKEN=your_pat_token
+   ```
+
+### 3. Set up the Pipeline
 Create a new pipeline in Azure Data Factory with two **Notebook Activities**:
 
 #### Activity 1: Bronze to Silver (Spark)
 - **Path**: `/Workspace/Users/your.email@domain.com/etl_project/src/databricks/sudop_etl_bronze_to_silver`
-- This step reads raw JSON from the `bronze` container, applies heavy data cleaning and structuring, and outputs idempotent Delta Parquet tables into the `silver` container.
+- This step reads raw JSON from the `bronze` container, applies data cleaning, outputs Delta Parquet tables into the `silver` container, and automatically registers them into the **Databricks Metastore** so downstream SQL engines can inherently discover them.
 
 #### Activity 2: Silver to Gold (dbt)
 - **Path**: `/Workspace/Users/your.email@domain.com/etl_project/src/databricks/dbt_runner`
-- This notebook implicitly executes `dbt run --profiles-dir .` against the `dbt_project/` folder in your Databricks repo, dynamically building the analytical Star Schema as Delta tables in the `gold` container!
+- To maintain security and execution context in a scalable cloud setting, this notebook executes a Python `subprocess` to natively pull securely-passed cluster environment variables, and executes `dbt run` to dynamically build the analytical Star Schema as Delta tables!
 
 ### 3. Run It!
 Click **Debug** or **Trigger Now** on the pipeline in Azure Data Factory to watch the highly scalable cluster process your data into ready-to-query models.
