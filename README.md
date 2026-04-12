@@ -135,16 +135,25 @@ Since our Databricks python execution runner utilizes an enterprise `subprocess`
 
 ```python
 import os
-from dbt.cli.main import dbtRunner, dbtRunnerResult
+import subprocess
 
-# Prevent Databricks read-only workspace errors by forwarding dbt writes to ephemeral storage
-os.environ["DBT_LOG_PATH"] = "/tmp/dbt_logs"
-os.environ["DBT_TARGET_PATH"] = "/tmp/dbt_target"
+# Prevent Databricks read-only workspace errors by forwarding dbt writes to unrestricted ephemeral storage
+secure_env = os.environ.copy()
+secure_env["DBT_LOG_PATH"] = "/tmp/dbt_logs"
+secure_env["DBT_TARGET_PATH"] = "/tmp/dbt_target"
 
-# Run data quality tests synchronously using Databricks programmatic Python API
-dbt_project_dir = "../../dbt_project"
-dbt = dbtRunner()
-result: dbtRunnerResult = dbt.invoke(["test", "--profiles-dir", dbt_project_dir, "--project-dir", dbt_project_dir])
+# Run data quality tests synchronously by sourcing the native cluster base environment
+bash_script = """
+source /etc/profile
+dbt test --profiles-dir ../../dbt_project --project-dir ../../dbt_project
+"""
+
+subprocess.run(
+    bash_script,
+    shell=True,
+    executable="/bin/bash",
+    env=secure_env
+)
 ```
 This guarantees foreign keys, unique row integrity, and null checks on your Gold layer models!
 

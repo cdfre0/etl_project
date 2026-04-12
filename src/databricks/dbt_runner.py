@@ -7,10 +7,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install dbt-core dbt-databricks
-
-# COMMAND ----------
-
 import os
 import subprocess
 
@@ -21,27 +17,36 @@ db_token = os.environ.get("DATABRICKS_TOKEN")
 if not db_host or not db_token:
     raise ValueError("CRITICAL: Databricks dbt variables (DBT_DATABRICKS_HOST, DATABRICKS_TOKEN) not found in the cluster environment!")
 
-# 2. Navigate to the dbt root folder (Python handles relative paths accurately)
+# 2. Configure dbt project location
 dbt_project_dir = "../../dbt_project"
 
-# 3. Prevent Databricks read-only workspace errors by forwarding dbt writes to ephemeral storage
-os.environ["DBT_LOG_PATH"] = "/tmp/dbt_logs"
-os.environ["DBT_TARGET_PATH"] = "/tmp/dbt_target"
+# 3. Create a secure environment mapping for dbt execution
+secure_env = os.environ.copy()
+secure_env["DBT_LOG_PATH"] = "/tmp/dbt_logs"
+secure_env["DBT_TARGET_PATH"] = "/tmp/dbt_target"
 
-from dbt.cli.main import dbtRunner, dbtRunnerResult
+print(f"Launching dbt run against host: {db_host}...")
 
-print(f"Launching dbt run programmatically against host: {db_host}...")
+# 4. Trigger dbt through the resilient Cluster Base Environment by sourcing Databricks profiles natively
+bash_script = f"""
+source /etc/profile
+dbt run --profiles-dir {dbt_project_dir} --project-dir {dbt_project_dir}
+"""
 
-# 3. Trigger dbt cleanly through the natively attached Python package programmatic API
-dbt = dbtRunner()
-
-# Explicitly pass the project directory to both configurations, replacing the need for subprocess `cwd` tracking
-result: dbtRunnerResult = dbt.invoke(
-    ["run", "--profiles-dir", dbt_project_dir, "--project-dir", dbt_project_dir]
+result = subprocess.run(
+    bash_script,
+    shell=True,
+    executable="/bin/bash",
+    env=secure_env,
+    capture_output=True,
+    text=True
 )
 
+print(result.stdout)
+
 # 4. Check for ungraceful failures
-if not result.success:
+if result.returncode != 0:
+    print(result.stderr)
     raise Exception("DBT Run Failed!")
 
 print("✅ DBT Models successfully built!")
