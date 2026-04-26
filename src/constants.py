@@ -43,3 +43,8 @@ MAX_POLLS = 30
 
 # --- File Paths ---
 METADATA_FILE_PATH = "src/curated/metadata.json"
+
+# --- Kafka / Azure Event Hubs ---
+KAFKA_TOPIC_DICTIONARIES = "bronze-dictionaries"
+KAFKA_TOPIC_CASES        = "bronze-cases"
+KAFKA_CONSUMER_GROUP     = "bronze-consumer"

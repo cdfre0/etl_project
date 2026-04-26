@@ -1,0 +1,33 @@
+FROM python:3.11-slim
+
+LABEL maintainer="etl-project"
+LABEL description="SUDOP Kafka Consumer — persists messages from Event Hubs to ADLS bronze container"
+
+# System dependencies for confluent-kafka (librdkafka)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    librdkafka-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source
+COPY src/ ./src/
+
+# Make kafka and bronze importable as siblings
+ENV PYTHONPATH="/app/src"
+
+# Health check — consumer is healthy as long as the process is running
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD pgrep -f "consumer.py" || exit 1
+
+# Run as non-root
+RUN useradd -m -u 1000 appuser && chown -R appuser /app
+USER appuser
+
+# Entrypoint: long-running process (ACA Replica mode)
+CMD ["python", "src/kafka/consumer.py"]

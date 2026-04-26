@@ -1,0 +1,29 @@
+FROM python:3.11-slim
+
+LABEL maintainer="etl-project"
+LABEL description="SUDOP Kafka Producer — fetches SUDOP API data and publishes to Azure Event Hubs"
+
+# System dependencies for confluent-kafka (librdkafka)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    librdkafka-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source
+COPY src/ ./src/
+
+# Make kafka and bronze importable as siblings
+ENV PYTHONPATH="/app/src"
+
+# Run as non-root
+RUN useradd -m -u 1000 appuser && chown -R appuser /app
+USER appuser
+
+# Entrypoint: runs once and exits (ACA Job mode)
+CMD ["python", "src/kafka/producer.py"]

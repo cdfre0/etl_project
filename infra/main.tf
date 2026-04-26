@@ -46,7 +46,7 @@ resource "azurerm_databricks_workspace" "dbw" {
   name                = var.databricks_workspace_name
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
-  sku                 = "standard"
+  sku                 = "premium"
 
   tags = {
     environment = "dev"
@@ -93,89 +93,6 @@ resource "azurerm_key_vault" "kv" {
     project     = "etl_medallion"
   }
 }
-
-resource "azurerm_container_registry" "acr" {
-  name                = var.container_registry_name
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  sku                 = "Basic"
-  admin_enabled       = true
-
-  tags = {
-    environment = "dev"
-    project     = "etl_medallion"
-  }
-}
-
-resource "azurerm_container_app_environment" "aca_env" {
-  name                = var.container_app_environment_name
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
-
-  tags = {
-    environment = "dev"
-    project     = "etl_medallion"
-  }
-}
-
-resource "azurerm_container_app" "etl_app" {
-  name                         = var.container_app_name
-  container_app_environment_id = azurerm_container_app_environment.aca_env.id
-  resource_group_name          = azurerm_resource_group.rg.name
-  revision_mode                = "Single"
-
-  secret {
-    name  = "acr-password"
-    value = azurerm_container_registry.acr.admin_password
-  }
-
-  registry {
-    server               = azurerm_container_registry.acr.login_server
-    username             = azurerm_container_registry.acr.admin_username
-    password_secret_name = "acr-password"
-  }
-
-  template {
-    container {
-      name   = "etl-container"
-      image  = "${azurerm_container_registry.acr.login_server}/etl-app:latest"
-      cpu    = 0.25
-      memory = "0.5Gi"
-    }
-  }
-
-  ingress {
-    external_enabled = true
-    target_port      = 80
-    traffic_weight {
-      percentage      = 100
-      latest_revision = true
-    }
-  }
-
-  identity {
-    type = "SystemAssigned"
-  }
-
-  tags = {
-    environment = "dev"
-    project     = "etl_medallion"
-  }
-}
-
-/*
-resource "azurerm_role_assignment" "storage_contributor" {
-  scope                = azurerm_storage_account.adls.id
-  role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = azurerm_container_app.etl_app.identity[0].principal_id
-}
-
-resource "azurerm_role_assignment" "kv_secrets_user" {
-  scope                = azurerm_key_vault.kv.id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = azurerm_container_app.etl_app.identity[0].principal_id
-}
-*/
 
 resource "azurerm_key_vault_secret" "api_key" {
   name         = var.api_key_secret_name

@@ -28,17 +28,4 @@ output "key_vault_uri" {
   value       = azurerm_key_vault.kv.vault_uri
 }
 
-output "container_registry_login_server" {
-  description = "The login server of the ACR."
-  value       = azurerm_container_registry.acr.login_server
-}
 
-output "container_app_url" {
-  description = "The URL of the deployed Container App."
-  value       = azurerm_container_app.etl_app.latest_revision_fqdn
-}
-
-output "container_app_identity_principal_id" {
-  description = "The principal ID of the system-assigned managed identity."
-  value       = azurerm_container_app.etl_app.identity[0].principal_id
-}

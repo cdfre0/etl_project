@@ -6,3 +6,4 @@ pandas
 python-dotenv
 requests
 pyarrow
+confluent-kafka>=2.3.0

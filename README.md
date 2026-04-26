@@ -74,6 +74,46 @@ graph TD
     DBT_DATABRICKS_HTTP_PATH="sql/protocolv1/o/..."
     DATABRICKS_TOKEN="your-databricks-personal-access-token"
     ```
+4.  See `.env.example` for additional Kafka / ADLS options and local development defaults.
+
+### Environment variables (Kafka & ADLS)
+
+This project reads a small set of environment variables for connecting to Azure Data Lake (ADLS Gen2) and to Kafka/Event Hubs. Below are the variables the code expects, where to obtain them, and example values.
+
+- **AZURE_STORAGE_CONNECTION_STRING**: ADLS Gen2 connection string. Get it from Azure Portal → **Storage accounts** → select your account → **Access keys** → **Connection string (key1)**. Example:
+
+    ```text
+    DefaultEndpointsProtocol=https;AccountName=YOUR_ACCOUNT;AccountKey=YOUR_KEY;EndpointSuffix=core.windows.net
+    ```
+
+- **KAFKA_USE_EVENT_HUBS**: `true` or `false`. When `false` the code uses a local Kafka broker (docker-compose). Default for local dev is `false`.
+
+- **KAFKA_BOOTSTRAP_SERVERS**: For local docker-compose use `kafka:29092`. For Azure Event Hubs use `<NAMESPACE>.servicebus.windows.net:9093`.
+
+- **KAFKA_CONNECTION_STRING**: Required when `KAFKA_USE_EVENT_HUBS=true`. Copy the connection string from Azure Portal → **Event Hubs Namespace** → **Shared access policies** → select policy (e.g. `RootManageSharedAccessKey`) → **Connection string—primary key**. Example:
+
+    ```text
+    Endpoint=sb://<NAMESPACE>.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=<KEY>
+    ```
+
+- **KAFKA_ENABLED**: `true`/`false`. Controls whether Kafka paths run. Default `true`.
+- **SKIP_IF_EXISTS**, **SKIP_IF_EXISTS_HOURS**: Optional runtime flags used by `ingest_sudop.py` to skip ingestion when recent files exist in ADLS. Defaults: `false` and `24` hours.
+
+Local dev tips:
+- If you want to test without a real Azure Storage account, run Azurite and set `AZURE_STORAGE_CONNECTION_STRING` to Azurite's devstore connection string. When using Docker on Windows, you may need to point Azurite endpoints to `host.docker.internal`.
+- The repository includes `.env.example` at the project root — copy it to `.env` and fill in the secrets before running `docker-compose`.
+
+Docker-compose quick start (local Kafka + consumer):
+
+```bash
+docker-compose up -d
+docker-compose --profile producer run --rm producer
+docker-compose logs -f consumer
+```
+
+Security:
+- `.env` is ignored by git (see `.gitignore`), do not commit secrets. Use a safer secret store (Key Vault, environment settings in your orchestrator) for production.
+
 4. Set up a Databricks Repo inside your Databricks workspace targeting your GitHub fork of this repository.
 
 ---

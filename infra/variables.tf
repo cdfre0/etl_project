@@ -47,15 +47,9 @@ variable "container_registry_name" {
 }
 
 variable "container_app_environment_name" {
-  description = "The name of the container app environment."
+  description = "The name of the container app environment (kept for potential future use)."
   type        = string
   default     = "aca-env-etl"
-}
-
-variable "container_app_name" {
-  description = "Name of the Azure Container App."
-  type        = string
-  default     = "aca-etl-app"
 }
 
 variable "subscription_id" {

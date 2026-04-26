@@ -1,0 +1,154 @@
+# =============================================================================
+# docker-compose.yml — Local Development Environment
+# =============================================================================
+# Provides a full local Kafka stack so you can test the producer/consumer
+# without real Azure Event Hubs.
+#
+# Usage:
+#   docker-compose up -d                                  # start Kafka + UI + consumer
+#   docker-compose --profile producer run --rm producer   # run producer once
+#   docker-compose logs -f consumer                       # watch consumer output
+#   docker-compose down                                   # stop everything
+#
+# Kafka UI dashboard → http://localhost:8080
+#
+# Environment:
+#   Fill in .env with your AZURE_STORAGE_CONNECTION_STRING.
+#   KAFKA_USE_EVENT_HUBS=false is already set for the local broker.
+# =============================================================================
+
+version: "3.9"
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Zookeeper — required by Kafka < 3.x
+  # ---------------------------------------------------------------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: sudop-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kafka-net
+
+  # ---------------------------------------------------------------------------
+  # Kafka broker (local, plain — no SASL/SSL)
+  # ---------------------------------------------------------------------------
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: sudop-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:29092"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - kafka-net
+
+  # ---------------------------------------------------------------------------
+  # Topic initialiser — creates topics at startup so consumer doesn't wait
+  # ---------------------------------------------------------------------------
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: sudop-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists \
+        --topic bronze-dictionaries --partitions 4 --replication-factor 1
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists \
+        --topic bronze-cases --partitions 4 --replication-factor 1
+      echo 'Topics created.'
+      "
+    networks:
+      - kafka-net
+
+  # ---------------------------------------------------------------------------
+  # Kafka UI — web dashboard at http://localhost:8080
+  # Shows topics, messages, consumer groups, lag, and offsets in real time.
+  # ---------------------------------------------------------------------------
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: sudop-kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local-sudop
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      DYNAMIC_CONFIG_ENABLED: "true"
+    networks:
+      - kafka-net
+
+  # ---------------------------------------------------------------------------
+  # Kafka Consumer — long-running, writes to ADLS
+  # ---------------------------------------------------------------------------
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.consumer
+    container_name: sudop-consumer
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_USE_EVENT_HUBS: "false"
+      KAFKA_ENABLED: "true"
+    restart: unless-stopped
+    networks:
+      - kafka-net
+
+  # ---------------------------------------------------------------------------
+  # Kafka Producer — run once on demand
+  # ---------------------------------------------------------------------------
+  producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.producer
+    container_name: sudop-producer
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_USE_EVENT_HUBS: "false"
+      KAFKA_ENABLED: "true"
+    profiles:
+      - producer
+    networks:
+      - kafka-net
+
+networks:
+  kafka-net:
+    driver: bridge
