@@ -58,9 +58,16 @@ cases_raw_df = (
     .json(f"{bronze_path}cases/*.json")
 )
 
+raw_case_count = cases_raw_df.count()
+print(f"Bronze case rows read: {raw_case_count}")
+
 # Filter out corrupt / partially-written records (lazy — no Spark action yet)
 if CORRUPT_COL in cases_raw_df.columns:
+    corrupt_case_count = cases_raw_df.filter(col(CORRUPT_COL).isNotNull()).count()
+    print(f"Corrupt / partial bronze case rows dropped: {corrupt_case_count}")
     cases_raw_df = cases_raw_df.filter(col(CORRUPT_COL).isNull()).drop(CORRUPT_COL)
+else:
+    print("No corrupt-record column present in bronze case input.")
 
 # Re-enable Photon for all downstream transforms and the Delta write
 spark.conf.set("spark.databricks.photon.enabled", "true")
@@ -68,6 +75,7 @@ spark.conf.set("spark.databricks.photon.enabled", "true")
 # Unwrap the nested "case" struct → flat top-level columns
 case_struct_cols = [f"case.{f.name}" for f in cases_raw_df.schema["case"].dataType.fields]
 cases_df = cases_raw_df.select([col(c).alias(c.replace("case.", "")) for c in case_struct_cols])
+print(f"Silver case rows after cleanup: {cases_df.count()}")
 
 # Rename hyphen-keyed API fields to underscore equivalents
 rename_rules = {
