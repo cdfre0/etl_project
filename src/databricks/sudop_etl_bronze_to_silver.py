@@ -38,11 +38,17 @@ spark.sql("CREATE DATABASE IF NOT EXISTS silver")
 #   {"type":"case","gmina_kod":"...","case":{...case fields with hyphen keys...}}
 #
 # Each file = one case. We unwrap the nested "case" struct and flatten it.
-# PERMISSIVE mode is used so corrupt / partially-written files are skipped
-# rather than crashing the job.
+#
+# NOTE: Photon's native SIMD JSON reader does NOT honour PERMISSIVE mode and
+# will hard-crash on any malformed file. We disable Photon for just this read
+# so the standard JVM reader handles bad records gracefully via
+# columnNameOfCorruptRecord, then immediately re-enable it for the Delta write.
 # ---------------------------------------------------------------------------
 
 CORRUPT_COL = "_corrupt_record"
+
+# Disable Photon so PERMISSIVE mode is handled by the JVM JSON reader
+spark.conf.set("spark.databricks.photon.enabled", "false")
 
 cases_raw_df = (
     spark.read
@@ -52,12 +58,12 @@ cases_raw_df = (
     .json(f"{bronze_path}cases/*.json")
 )
 
-# Drop unreadable / empty files and log how many were skipped
+# Filter out corrupt / partially-written records (lazy — no Spark action yet)
 if CORRUPT_COL in cases_raw_df.columns:
-    bad_count = cases_raw_df.filter(col(CORRUPT_COL).isNotNull()).count()
-    if bad_count:
-        print(f"WARNING: {bad_count} corrupt/unreadable record(s) in bronze/cases — skipping.")
     cases_raw_df = cases_raw_df.filter(col(CORRUPT_COL).isNull()).drop(CORRUPT_COL)
+
+# Re-enable Photon for all downstream transforms and the Delta write
+spark.conf.set("spark.databricks.photon.enabled", "true")
 
 # Unwrap the nested "case" struct → flat top-level columns
 case_struct_cols = [f"case.{f.name}" for f in cases_raw_df.schema["case"].dataType.fields]
