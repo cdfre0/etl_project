@@ -20,7 +20,7 @@ GOLD_FACT_TABLE = "fact_przypadki_pomocy"
 GOLD_DIM_BENEFICJENT = "dim_beneficjent"
 GOLD_DIM_UDZIELAJACY_POMOCY = "dim_udzielajacy_pomocy"
 GOLD_DIM_CHARAKTERYSTYKA = "dim_charakterystyka"
-GOLD_DIM_GEOGRAFIA = "dim_geografia"
+GOLD_DIM_GMINA = "dim_gmina"
 GOLD_DIM_DATA = "dim_data"
 
 

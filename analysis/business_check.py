@@ -1,69 +1,110 @@
 #!/usr/bin/env python3
 """
-This script provides a practical example of how to query the gold layer data.
-It connects to the Azure Data Lake, loads the final fact and dimension tables,
-and performs an analysis to find the total aid amount by municipality.
+business_check.py
+
+Connects to Databricks SQL via the databricks-sql-connector and runs a sample
+business analysis against the Gold layer Delta tables.
+
+The Gold layer tables live in the Databricks `gold` schema as Delta tables —
+NOT as raw Parquet files on ADLS — so we query them through Databricks SQL,
+not by reading ADLS directly.
+
+Requirements (add to requirements.txt if missing):
+    databricks-sql-connector
+
+Environment variables (same as the rest of the project, set in .env):
+    DBT_DATABRICKS_HOST        e.g. adb-1234567890.12.azuredatabricks.net
+    DBT_DATABRICKS_HTTP_PATH   e.g. /sql/1.0/warehouses/abcdef1234567890
+    DATABRICKS_TOKEN           personal access token
 """
 
 import logging
 import os
+import sys
 
 import pandas as pd
+from databricks import sql
 from dotenv import load_dotenv
 
-# Since this script is in a different directory, we need to adjust the Python path
-# to correctly import the 'common' module from the 'src' directory.
-import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent / 'src'))
+load_dotenv()
 
-import constants as C
-from common import get_adls_client, read_parquet_from_adls, setup_logging
+
+def get_connection():
+    host       = os.getenv("DBT_DATABRICKS_HOST")
+    http_path  = os.getenv("DBT_DATABRICKS_HTTP_PATH")
+    token      = os.getenv("DATABRICKS_TOKEN")
+
+    if not all([host, http_path, token]):
+        raise EnvironmentError(
+            "Missing one or more required env vars: "
+            "DBT_DATABRICKS_HOST, DBT_DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN"
+        )
+
+    return sql.connect(
+        server_hostname=host,
+        http_path=http_path,
+        access_token=token,
+    )
+
+
+def run_query(conn, query: str) -> pd.DataFrame:
+    with conn.cursor() as cursor:
+        cursor.execute(query)
+        rows    = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description]
+    return pd.DataFrame(rows, columns=columns)
 
 
 def main():
-    """
-    Connects to the gold layer, loads data, and runs a sample business analysis.
-    """
-    setup_logging()
-    load_dotenv()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-    adls_client = get_adls_client(connection_string)
-
-    # 1. Load the required tables from the Gold layer
-    logging.info("--- Loading data from Gold Layer ---")
-    fact_table_path = f"{C.GOLD_FACT_TABLE}/{C.GOLD_FACT_TABLE}.parquet"
-    dim_geo_path = f"{C.GOLD_DIM_GEOGRAFIA}/{C.GOLD_DIM_GEOGRAFIA}.parquet"
-
-    fact_df = read_parquet_from_adls(adls_client, C.GOLD_CONTAINER, fact_table_path)
-    dim_geo_df = read_parquet_from_adls(adls_client, C.GOLD_CONTAINER, dim_geo_path)
-
-    if fact_df is None or dim_geo_df is None:
-        logging.critical("Could not load necessary tables from the Gold layer. Aborting analysis.")
+    logging.info("Connecting to Databricks SQL...")
+    try:
+        conn = get_connection()
+    except EnvironmentError as e:
+        logging.critical(e)
         sys.exit(1)
 
-    # 2. Perform the Analysis (Total Aid by Municipality)
-    logging.info("--- Performing Analysis: Total Aid by Municipality ---")
-    
-    # Merge (JOIN) the fact table with the geography dimension
-    merged_df = pd.merge(
-        fact_df,
-        dim_geo_df,
-        on="geografia_id",
-        how="left"
-    )
+    # ------------------------------------------------------------------
+    # Analysis 1: Total aid by municipality (Top 20)
+    # ------------------------------------------------------------------
+    logging.info("Running: Total aid by municipality")
+    query_municipality = """
+        SELECT
+            g.gmina_nazwa                        AS municipality_name,
+            COUNT(*)                             AS number_of_cases,
+            ROUND(SUM(f.wartosc_brutto_pln), 2) AS total_aid_pln
+        FROM gold.fact_przypadki_pomocy f
+        LEFT JOIN gold.dim_gmina g ON f.geografia_id = g.geografia_id
+        GROUP BY g.gmina_nazwa
+        ORDER BY total_aid_pln DESC
+        LIMIT 20
+    """
+    df_municipality = run_query(conn, query_municipality)
+    print("\n=== Top 20 Municipalities by Total Aid (PLN) ===")
+    print(df_municipality.to_string(index=False))
 
-    # Group by municipality name and aggregate the aid amount
-    analysis_result = merged_df.groupby("gmina_nazwa")["wartosc_brutto_pln"].sum().reset_index()
-    analysis_result = analysis_result.rename(columns={"wartosc_brutto_pln": "total_aid_pln"})
+    # ------------------------------------------------------------------
+    # Analysis 2: Aid by business size
+    # ------------------------------------------------------------------
+    logging.info("Running: Aid by business size")
+    query_size = """
+        SELECT
+            b.wielkosc_beneficjenta_nazwa        AS business_size,
+            COUNT(*)                             AS number_of_cases,
+            ROUND(SUM(f.wartosc_brutto_pln), 2) AS total_aid_pln
+        FROM gold.fact_przypadki_pomocy f
+        LEFT JOIN gold.dim_beneficjent b ON f.beneficjent_id = b.beneficjent_id
+        WHERE b.wielkosc_beneficjenta_nazwa IS NOT NULL
+        GROUP BY b.wielkosc_beneficjenta_nazwa
+        ORDER BY total_aid_pln DESC
+    """
+    df_size = run_query(conn, query_size)
+    print("\n=== Aid by Business Size ===")
+    print(df_size.to_string(index=False))
 
-    # Sort the results to find the top municipalities
-    top_20_municipalities = analysis_result.sort_values(by="total_aid_pln", ascending=False).head(20)
-
-    # 3. Display the Results
-    logging.info("--- Analysis Results: Top 20 Municipalities by Total Aid (PLN) ---")
-    print(top_20_municipalities.to_string(index=False))
+    conn.close()
+    logging.info("Done.")
 
 
 if __name__ == "__main__":
