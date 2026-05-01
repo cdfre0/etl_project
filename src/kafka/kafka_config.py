@@ -68,6 +68,8 @@ def get_producer_config() -> dict:
             "bootstrap.servers": bootstrap,
             "acks":              "all",
             "retries":           5,
+            # Align client-side max message size with broker's socket.request.max.bytes
+            "message.max.bytes": 110100480,
         }
 
 

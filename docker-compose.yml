@@ -74,17 +74,15 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    entrypoint: ["/bin/bash", "-c"]
-    command: |
-      "
-      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists \
-        --topic bronze-dictionaries --partitions 4 --replication-factor 1
-      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists \
-        --topic bronze-cases --partitions 4 --replication-factor 1
-      echo 'Topics created.'
-      "
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic bronze-dictionaries --partitions 4 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic bronze-cases --partitions 4 --replication-factor 1
+        echo 'Topics created.'
     networks:
       - kafka-net
+
 
   # ---------------------------------------------------------------------------
   # Kafka UI — web dashboard at http://localhost:8080

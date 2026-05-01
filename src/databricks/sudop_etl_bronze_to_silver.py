@@ -31,54 +31,95 @@ spark.sql("CREATE DATABASE IF NOT EXISTS silver")
 
 # COMMAND ----------
 
-# Read JSON case files. For nested JSON with 'wyniki' array, we use explode.
-from pyspark.sql.functions import explode
+# ---------------------------------------------------------------------------
+# Read JSON case files — Kafka consumer format only.
+#
+# The consumer writes the full Kafka envelope per file:
+#   {"type":"case","gmina_kod":"...","case":{...case fields with hyphen keys...}}
+#
+# Each file = one case. We unwrap the nested "case" struct and flatten it.
+# PERMISSIVE mode is used so corrupt / partially-written files are skipped
+# rather than crashing the job.
+# ---------------------------------------------------------------------------
 
-cases_raw_df = spark.read.option("multiline", "true").json(f"{bronze_path}cases/*.json")
+CORRUPT_COL = "_corrupt_record"
 
-if "wyniki" in cases_raw_df.columns:
-    cases_df = cases_raw_df.select(explode(col("wyniki")).alias("wynik")).select("wynik.*")
-    
-    # Apply column renames based on metadata.json mapping
-    rename_rules = {
-        "nip-udzielajacego-pomocy": "nip_udzielajacego_pomocy", "nazwa-udzielajacego-pomocy": "nazwa_udzielajacego_pomocy",
-        "srodek-pomocowy-numer": "srodek_pomocowy_numer", "srodek-pomocowy-nazwa": "srodek_pomocowy_nazwa",
-        "podstawa-prawna-2a-kod": "podstawa_prawna_2a_kod", "podstawa-prawna-2a-nazwa": "podstawa_prawna_2a_nazwa",
-        "podstawa-prawna-2b": "podstawa_prawna_2b", "podstawa-prawna-2c": "podstawa_prawna_2c",
-        "podstawa-prawna-3a": "podstawa_prawna_3a", "podstawa-prawna-3b": "podstawa_prawna_3b",
-        "symbol-aktu-ogolnego": "symbol_aktu_ogolnego", "dzien-udzielenia-pomocy": "dzien_udzielenia_pomocy",
-        "nip-beneficjenta": "nip_beneficjenta", "nazwa-beneficjenta": "nazwa_beneficjenta",
-        "wielkosc-beneficjenta-kod": "wielkosc_beneficjenta_kod", "wielkosc-beneficjenta-nazwa": "wielkosc_beneficjenta_nazwa",
-        "sektor-dzialalnosci-kod": "sektor_dzialalnosci_kod", "sektor-dzialalnosci-wersja": "sektor_dzialalnosci_wersja",
-        "sektor-dzialalnosci-nazwa": "sektor_dzialalnosci_nazwa", "gmina-siedziby-kod": "gmina_siedziby_kod",
-        "gmina-siedziby-nazwa": "gmina_siedziby_nazwa", "przeznaczenie-pomocy-kod": "przeznaczenie_pomocy_kod",
-        "przeznaczenie-pomocy-nazwa": "przeznaczenie_pomocy_nazwa", "forma-pomocy-kod": "forma_pomocy_kod",
-        "forma-pomocy-nazwa": "forma_pomocy_nazwa", "wartosc-nominalna-pln": "wartosc_nominalna_pln",
-        "wartosc-brutto-pln": "wartosc_brutto_pln", "wartosc-brutto-eur": "wartosc_brutto_eur",
-    }
-    
-    for old_name, new_name in rename_rules.items():
-        if old_name in cases_df.columns:
-            cases_df = cases_df.withColumnRenamed(old_name, new_name)
+cases_raw_df = (
+    spark.read
+    .option("multiline", "true")
+    .option("mode", "PERMISSIVE")
+    .option("columnNameOfCorruptRecord", CORRUPT_COL)
+    .json(f"{bronze_path}cases/*.json")
+)
 
-    # Cast data types seamlessly
+# Drop unreadable / empty files and log how many were skipped
+if CORRUPT_COL in cases_raw_df.columns:
+    bad_count = cases_raw_df.filter(col(CORRUPT_COL).isNotNull()).count()
+    if bad_count:
+        print(f"WARNING: {bad_count} corrupt/unreadable record(s) in bronze/cases — skipping.")
+    cases_raw_df = cases_raw_df.filter(col(CORRUPT_COL).isNull()).drop(CORRUPT_COL)
+
+# Unwrap the nested "case" struct → flat top-level columns
+case_struct_cols = [f"case.{f.name}" for f in cases_raw_df.schema["case"].dataType.fields]
+cases_df = cases_raw_df.select([col(c).alias(c.replace("case.", "")) for c in case_struct_cols])
+
+# Rename hyphen-keyed API fields to underscore equivalents
+rename_rules = {
+    "nip-udzielajacego-pomocy": "nip_udzielajacego_pomocy",
+    "nazwa-udzielajacego-pomocy": "nazwa_udzielajacego_pomocy",
+    "srodek-pomocowy-numer": "srodek_pomocowy_numer",
+    "srodek-pomocowy-nazwa": "srodek_pomocowy_nazwa",
+    "podstawa-prawna-2a-kod": "podstawa_prawna_2a_kod",
+    "podstawa-prawna-2a-nazwa": "podstawa_prawna_2a_nazwa",
+    "podstawa-prawna-2b": "podstawa_prawna_2b",
+    "podstawa-prawna-2c": "podstawa_prawna_2c",
+    "podstawa-prawna-3a": "podstawa_prawna_3a",
+    "podstawa-prawna-3b": "podstawa_prawna_3b",
+    "symbol-aktu-ogolnego": "symbol_aktu_ogolnego",
+    "dzien-udzielenia-pomocy": "dzien_udzielenia_pomocy",
+    "nip-beneficjenta": "nip_beneficjenta",
+    "nazwa-beneficjenta": "nazwa_beneficjenta",
+    "wielkosc-beneficjenta-kod": "wielkosc_beneficjenta_kod",
+    "wielkosc-beneficjenta-nazwa": "wielkosc_beneficjenta_nazwa",
+    "sektor-dzialalnosci-kod": "sektor_dzialalnosci_kod",
+    "sektor-dzialalnosci-wersja": "sektor_dzialalnosci_wersja",
+    "sektor-dzialalnosci-nazwa": "sektor_dzialalnosci_nazwa",
+    "gmina-siedziby-kod": "gmina_siedziby_kod",
+    "gmina-siedziby-nazwa": "gmina_siedziby_nazwa",
+    "przeznaczenie-pomocy-kod": "przeznaczenie_pomocy_kod",
+    "przeznaczenie-pomocy-nazwa": "przeznaczenie_pomocy_nazwa",
+    "forma-pomocy-kod": "forma_pomocy_kod",
+    "forma-pomocy-nazwa": "forma_pomocy_nazwa",
+    "wartosc-nominalna-pln": "wartosc_nominalna_pln",
+    "wartosc-brutto-pln": "wartosc_brutto_pln",
+    "wartosc-brutto-eur": "wartosc_brutto_eur",
+}
+
+for old, new in rename_rules.items():
+    if old in cases_df.columns:
+        cases_df = cases_df.withColumnRenamed(old, new)
+
+
+# Guard: if we ended up with an empty or unrecognisable frame, bail gracefully
+EXPECTED_COLS = {"nip_beneficjenta", "wartosc_brutto_pln", "dzien_udzielenia_pomocy"}
+if not EXPECTED_COLS.intersection(set(cases_df.columns)):
+    print("WARNING: No recognisable case columns found in Bronze layer. Skipping cases write.")
+else:
+    # Cast data types
     cases_df = cases_df.withColumn("dzien_udzielenia_pomocy", to_date(col("dzien_udzielenia_pomocy")))
     cases_df = cases_df.withColumn("wartosc_nominalna_pln", col("wartosc_nominalna_pln").cast("double"))
     cases_df = cases_df.withColumn("wartosc_brutto_pln", col("wartosc_brutto_pln").cast("double"))
     cases_df = cases_df.withColumn("wartosc_brutto_eur", col("wartosc_brutto_eur").cast("double"))
-    
+
     cases_df = cases_df.withColumn("_source_file", input_file_name())
     cases_df = cases_df.withColumn("_curated_at", current_timestamp())
 
-    # Write idempotently to Delta and register as an external table
-    print("Writing Cases to Silver Delta table...")
+    print(f"Writing {cases_df.count()} case records to Silver Delta table...")
     cases_df.write \
-      .format("delta") \
-      .mode("overwrite") \
-      .option("path", f"{silver_path}przypadki_pomocy") \
-      .saveAsTable("silver.przypadki_pomocy")
-else:
-    print("No valid cases found in Bronze layer.")
+        .format("delta") \
+        .mode("overwrite") \
+        .option("path", f"{silver_path}przypadki_pomocy") \
+        .saveAsTable("silver.przypadki_pomocy")
 
 # COMMAND ----------
 

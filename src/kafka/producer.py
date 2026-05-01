@@ -18,6 +18,7 @@ import logging
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 import requests
@@ -213,42 +214,76 @@ def run_dictionaries_stage(producer: Producer) -> list | None:
     return gminy_data
 
 
-def run_cases_stage(producer: Producer, gminy_data: list) -> int:
+def _process_municipality(producer: Producer, gmina: dict, index: int, total: int) -> int:
     """
-    Stage 2: Fetch cases per municipality and publish to bronze-cases topic.
-    Returns the count of successfully published messages.
+    Worker function: Fetch and publish cases for a single municipality.
+    Returns the count of cases published for this municipality.
     """
-    logging.info("=== STAGE 2: Case Ingestion by Municipality ===")
+    gmina_kod  = gmina.get("number", "").strip()
+    gmina_name = gmina.get("name", "")
+
+    if not gmina_kod or gmina_name in ("NZ", "BRAK DANYCH"):
+        return 0
+
+    logging.info(f"Municipality {index + 1}/{total}: {gmina_name} ({gmina_kod})")
+    data = fetch_case_for_municipality(gmina_kod, gmina_name)
+
     published = 0
-    total = len(gminy_data)
-
-    for i, gmina in enumerate(gminy_data):
-        gmina_kod  = gmina.get("number", "").strip()
-        gmina_name = gmina.get("name", "")
-
-        if not gmina_kod or gmina_name in ("NZ", "BRAK DANYCH"):
-            continue
-
-        logging.info(f"Municipality {i + 1}/{total}: {gmina_name} ({gmina_kod})")
-        data = fetch_case_for_municipality(gmina_kod, gmina_name)
-
-        if data:
+    if data:
+        # Extract individual cases from the result (wyniki field contains the case list)
+        cases = data.get("wyniki", [])
+        logging.info(f"[Producer] Got {len(cases)} case(s) for {gmina_name}")
+        
+        for case_idx, case in enumerate(cases):
             payload = {
                 "type":         "case",
                 "gmina_kod":    gmina_kod,
                 "gmina_name":   gmina_name,
                 "search_param": "gmina-siedziby-kod",
                 "timestamp":    datetime.utcnow().isoformat(),
-                "data":         data,
+                "case_index":   case_idx,
+                "case":         case,
             }
-            publish(producer, TOPIC_CASES, key=gmina_kod, payload=payload)
+            publish(producer, TOPIC_CASES, key=f"{gmina_kod}_{case_idx}", payload=payload)
             published += 1
-            logging.info(f"[Producer] Published cases for {gmina_name} → {TOPIC_CASES}")
 
-        time.sleep(RATE_LIMIT_DELAY)
+    return published
+
+
+def run_cases_stage(producer: Producer, gminy_data: list) -> int:
+    """
+    Stage 2: Fetch cases per municipality in parallel and publish to bronze-cases topic.
+    Each case record is published as a separate message.
+    Returns the total count of successfully published messages.
+    """
+    logging.info("=== STAGE 2: Case Ingestion by Municipality (Parallel) ===")
+    total = len(gminy_data)
+    published = 0
+    
+    # Filter out invalid municipalities upfront
+    valid_gminy = [
+        (i, gmina) for i, gmina in enumerate(gminy_data)
+        if gmina.get("number", "").strip() and gmina.get("name") not in ("NZ", "BRAK DANYCH")
+    ]
+    
+    logging.info(f"Processing {len(valid_gminy)} valid municipalities in parallel...")
+    
+    # Use 5 worker threads to fetch municipalities in parallel
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(_process_municipality, producer, gmina, i, total): (i, gmina)
+            for i, gmina in valid_gminy
+        }
+        
+        for future in as_completed(futures):
+            try:
+                count = future.result()
+                published += count
+            except Exception as e:
+                logging.error(f"Error processing municipality: {e}")
 
     producer.flush()
-    logging.info(f"[Producer] Stage 2 complete. {published} municipality results published.")
+    logging.info(f"[Producer] Stage 2 complete. {published} individual cases published.")
     return published
 
 
