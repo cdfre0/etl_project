@@ -102,16 +102,11 @@ cases_raw_df = (
     .json(f"{bronze_path}cases/*.json")
 )
 
-raw_case_count = cases_raw_df.count()
-print(f"Bronze case rows read: {raw_case_count}")
-
-# Filter out corrupt / partially-written records (lazy — no Spark action yet)
+# Filter out corrupt / partially-written records lazily.
+# We avoid calling .count() here because Spark disallows queries that only
+# reference the _corrupt_record column.
 if CORRUPT_COL in cases_raw_df.columns:
-    corrupt_case_count = cases_raw_df.filter(col(CORRUPT_COL).isNotNull()).count()
-    print(f"Corrupt / partial bronze case rows dropped: {corrupt_case_count}")
     cases_raw_df = cases_raw_df.filter(col(CORRUPT_COL).isNull()).drop(CORRUPT_COL)
-else:
-    print("No corrupt-record column present in bronze case input.")
 
 # Re-enable Photon for all downstream transforms and the Delta write
 spark.conf.set("spark.databricks.photon.enabled", "true")
