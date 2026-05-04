@@ -50,12 +50,55 @@ CORRUPT_COL = "_corrupt_record"
 # Disable Photon so PERMISSIVE mode is handled by the JVM JSON reader
 spark.conf.set("spark.databricks.photon.enabled", "false")
 
+from pyspark.sql.types import StructType, StructField, StringType
+
+# Define the schema explicitly to bypass Spark's OOM-prone JsonInferSchema phase.
+# We expect all API fields to be strings initially (cast later).
+case_fields = [
+    StructField("nip-udzielajacego-pomocy", StringType(), True),
+    StructField("nazwa-udzielajacego-pomocy", StringType(), True),
+    StructField("srodek-pomocowy-numer", StringType(), True),
+    StructField("srodek-pomocowy-nazwa", StringType(), True),
+    StructField("podstawa-prawna-2a-kod", StringType(), True),
+    StructField("podstawa-prawna-2a-nazwa", StringType(), True),
+    StructField("podstawa-prawna-2b", StringType(), True),
+    StructField("podstawa-prawna-2c", StringType(), True),
+    StructField("podstawa-prawna-3a", StringType(), True),
+    StructField("podstawa-prawna-3b", StringType(), True),
+    StructField("symbol-aktu-ogolnego", StringType(), True),
+    StructField("dzien-udzielenia-pomocy", StringType(), True),
+    StructField("nip-beneficjenta", StringType(), True),
+    StructField("nazwa-beneficjenta", StringType(), True),
+    StructField("wielkosc-beneficjenta-kod", StringType(), True),
+    StructField("wielkosc-beneficjenta-nazwa", StringType(), True),
+    StructField("sektor-dzialalnosci-kod", StringType(), True),
+    StructField("sektor-dzialalnosci-wersja", StringType(), True),
+    StructField("sektor-dzialalnosci-nazwa", StringType(), True),
+    StructField("gmina-siedziby-kod", StringType(), True),
+    StructField("gmina-siedziby-nazwa", StringType(), True),
+    StructField("przeznaczenie-pomocy-kod", StringType(), True),
+    StructField("przeznaczenie-pomocy-nazwa", StringType(), True),
+    StructField("forma-pomocy-kod", StringType(), True),
+    StructField("forma-pomocy-nazwa", StringType(), True),
+    StructField("wartosc-nominalna-pln", StringType(), True),
+    StructField("wartosc-brutto-pln", StringType(), True),
+    StructField("wartosc-brutto-eur", StringType(), True)
+]
+
+explicit_schema = StructType([
+    StructField("type", StringType(), True),
+    StructField("gmina_kod", StringType(), True),
+    StructField("timestamp", StringType(), True),
+    StructField("case", StructType(case_fields), True),
+    StructField(CORRUPT_COL, StringType(), True)
+])
+
 cases_raw_df = (
     spark.read
+    .schema(explicit_schema)
     .option("multiline", "true")
     .option("mode", "PERMISSIVE")
     .option("columnNameOfCorruptRecord", CORRUPT_COL)
-    .option("samplingRatio", "0.01")  # Prevents Driver OOM by sampling 1% of files for schema
     .json(f"{bronze_path}cases/*.json")
 )
 
