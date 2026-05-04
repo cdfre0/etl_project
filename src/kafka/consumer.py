@@ -51,13 +51,13 @@ signal.signal(signal.SIGINT,  _handle_sigterm)
 # ADLS path resolver
 # ---------------------------------------------------------------------------
 
-def _resolve_adls_path(payload: dict) -> tuple[str, str]:
+def _resolve_adls_path(payload: dict, offset: int = 0, partition: int = 0) -> tuple[str, str]:
     """
-    Given a message payload, returns (container, file_path) for ADLS.
+    Given a message payload and Kafka metadata, returns (container, file_path) for ADLS.
 
     Message types:
       dictionary → bronze/dictionaries/slownik_<name>_<timestamp>.json
-      case       → bronze/cases/przypadki_pomocy_gmina-siedziby-kod_<kod>_<timestamp>.json
+      case       → bronze/cases/przypadki_pomocy_gmina-siedziby-kod_<kod>_p<partition>_o<offset>.json
     """
     msg_type  = payload.get("type")
     timestamp = payload.get("timestamp", datetime.utcnow().isoformat())
@@ -71,7 +71,7 @@ def _resolve_adls_path(payload: dict) -> tuple[str, str]:
         gmina_kod = payload["gmina_kod"]
         file_path = (
             f"{C.BRONZE_CASES_DIR}/"
-            f"przypadki_pomocy_gmina-siedziby-kod_{gmina_kod}_{ts_safe}.json"
+            f"przypadki_pomocy_gmina-siedziby-kod_{gmina_kod}_p{partition}_o{offset:08d}.json"
         )
     else:
         raise ValueError(f"Unknown message type: '{msg_type}'")
@@ -109,6 +109,11 @@ def main():
         sys.exit(1)
 
     messages_processed = 0
+    messages_received = 0
+    messages_written = 0
+    messages_committed = 0
+
+    logging.info("[Consumer] Entering poll loop.")
 
     try:
         while _running:
@@ -129,13 +134,15 @@ def main():
                     logging.error(f"[Consumer] Kafka error: {msg.error()}")
                 continue
 
+            messages_received += 1
+
             # --------------- Process message ---------------
             topic  = msg.topic()
             key    = msg.key().decode("utf-8") if msg.key() else "unknown"
             offset = msg.offset()
 
             logging.info(
-                f"[Consumer] Received message | topic={topic} "
+                f"[Consumer] Received message #{messages_received} | topic={topic} "
                 f"key={key} offset={offset}"
             )
 
@@ -148,12 +155,15 @@ def main():
                 )
                 # Commit anyway to avoid infinite retry on a poison message
                 consumer.commit(message=msg)
+                messages_committed += 1
                 continue
 
             try:
-                container, file_path = _resolve_adls_path(payload)
+                container, file_path = _resolve_adls_path(payload, msg.offset(), msg.partition())
                 data_to_write = payload.get("data", payload)
+                logging.info(f"[Consumer] Writing ADLS file {container}/{file_path}")
                 save_json_to_adls(adls_client, container, file_path, data_to_write)
+                messages_written += 1
             except (ValueError, Exception) as e:
                 logging.error(
                     f"[Consumer] Failed to write message to ADLS "
@@ -164,6 +174,7 @@ def main():
 
             # Commit offset only after successful ADLS write
             consumer.commit(message=msg)
+            messages_committed += 1
             messages_processed += 1
             logging.info(
                 f"[Consumer] ✓ Committed offset {offset} | "
@@ -177,7 +188,8 @@ def main():
         consumer.close()
         logging.info(
             f"=== SUDOP Kafka Consumer Stopped === "
-            f"(total messages processed: {messages_processed})"
+            f"(received: {messages_received}, written: {messages_written}, "
+            f"committed: {messages_committed}, processed: {messages_processed})"
         )
 
 

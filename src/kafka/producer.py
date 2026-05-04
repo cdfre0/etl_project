@@ -129,7 +129,14 @@ def fetch_case_for_municipality(gmina_kod: str, gmina_name: str) -> dict | None:
             if data.get("wyniki"):
                 return data
         except json.JSONDecodeError:
-            logging.warning(f"Non-JSON poll response for queue {queue_id}.")
+            body_preview = (poll_resp.text or "")[:500].replace("\n", " ").replace("\r", " ")
+            logging.warning(
+                "Non-JSON poll response for queue %s | status=%s | content-type=%s | body=%r",
+                queue_id,
+                poll_resp.status_code,
+                poll_resp.headers.get("Content-Type"),
+                body_preview,
+            )
 
     logging.warning(f"Polling timed out for queue {queue_id} ({gmina_kod}).")
     return None
@@ -223,6 +230,7 @@ def _process_municipality(producer: Producer, gmina: dict, index: int, total: in
     gmina_name = gmina.get("name", "")
 
     if not gmina_kod or gmina_name in ("NZ", "BRAK DANYCH"):
+        logging.info(f"[Producer] Skipping invalid municipality {gmina_name!r} ({gmina_kod!r})")
         return 0
 
     logging.info(f"Municipality {index + 1}/{total}: {gmina_name} ({gmina_kod})")
@@ -246,7 +254,10 @@ def _process_municipality(producer: Producer, gmina: dict, index: int, total: in
             }
             publish(producer, TOPIC_CASES, key=f"{gmina_kod}_{case_idx}", payload=payload)
             published += 1
+    else:
+        logging.warning(f"[Producer] No case data returned for {gmina_name} ({gmina_kod})")
 
+    logging.info(f"[Producer] Published {published} case message(s) for {gmina_name} ({gmina_kod})")
     return published
 
 
@@ -283,7 +294,7 @@ def run_cases_stage(producer: Producer, gminy_data: list) -> int:
                 logging.error(f"Error processing municipality: {e}")
 
     producer.flush()
-    logging.info(f"[Producer] Stage 2 complete. {published} individual cases published.")
+    logging.info(f"[Producer] Stage 2 complete. {published} individual cases published across {len(valid_gminy)} municipalities.")
     return published
 
 

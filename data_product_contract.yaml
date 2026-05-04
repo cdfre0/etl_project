@@ -1,0 +1,101 @@
+product_name: SUDOP Public Aid Data Product
+product_owner: Jan (ETL Project Team)
+product_purpose: >
+  Provide an analytical Star Schema for tracking public financial aid disbursed to Polish enterprises.
+  The product brings transparency to state subsidies, allowing analysts to query aid by beneficiary size,
+  municipality, sector, and aid form.
+
+data_sources:
+  - name: UOKiK SUDOP API
+    type: REST API
+    description: System Udostępniania Danych o Pomocy Publicznej (SUDOP)
+
+refresh_frequency: Daily
+access_method: 
+  type: Direct Storage Access (Azure SAS Token)
+  location: "azure://gold@stetldatamedallion.blob.core.windows.net/"
+  credentials: "Read-only SAS Token provided in project documentation/demo scripts."
+
+schema:
+  fact_table:
+    name: fact_przypadki_pomocy
+    description: Central fact table recording individual instances of financial aid.
+    columns:
+      - name: wartosc_nominalna_pln
+        type: DOUBLE
+        description: Nominal aid value in PLN
+      - name: wartosc_brutto_pln
+        type: DOUBLE
+        description: Gross aid value in PLN
+      - name: beneficjent_id
+        type: BIGINT
+        description: Foreign key to dim_beneficjent
+      - name: udzielajacy_pomocy_id
+        type: BIGINT
+        description: Foreign key to dim_udzielajacy_pomocy
+      - name: charakterystyka_id
+        type: BIGINT
+        description: Foreign key to dim_charakterystyka
+      - name: geografia_id
+        type: BIGINT
+        description: Foreign key to dim_gmina
+      - name: date_id
+        type: BIGINT
+        description: Foreign key to dim_data
+
+  dimension_tables:
+    - name: dim_beneficjent
+      description: Dimension detailing the recipient of the aid.
+      columns:
+        - name: beneficjent_id
+          type: BIGINT
+        - name: nip_beneficjenta
+          type: STRING
+        - name: nazwa_beneficjenta
+          type: STRING
+        - name: wielkosc_beneficjenta_nazwa
+          type: STRING
+    - name: dim_gmina
+      description: Geography dimension for the municipality.
+    - name: dim_udzielajacy_pomocy
+      description: Dimension detailing the entity granting the aid.
+    - name: dim_charakterystyka
+      description: Dimension detailing the form, purpose, and sector of the aid.
+    - name: dim_data
+      description: Time dimension based on the date the aid was granted.
+
+quality_metrics:
+  - metric_name: Completeness of Financial Values
+    definition: "% of rows in fact_przypadki_pomocy where wartosc_brutto_pln is not null"
+    current_value: "~100%"
+    expected_threshold: "> 99.9%"
+    update_cadence: "Every pipeline run"
+  
+  - metric_name: Uniqueness of Beneficiaries
+    definition: "% of unique beneficjent_id values in dim_beneficjent relative to total rows"
+    current_value: "100%"
+    expected_threshold: "100%"
+    update_cadence: "Every pipeline run"
+
+  - metric_name: Consistency (Referential Integrity)
+    definition: "% of rows in fact_przypadki_pomocy that have a valid, non-null geografia_id matching dim_gmina"
+    current_value: "~100%"
+    expected_threshold: "> 99.0%"
+    update_cadence: "Every pipeline run"
+
+known_limitations:
+  - Historical SUDOP API data may contain delays or retroactive corrections.
+  - Beneficiary sizing metadata (micro, small, large) is dependent on the reporting entity and may contain NULLs.
+
+example_usage:
+  type: SQL
+  query: |
+    -- Top 5 municipalities by total aid disbursed
+    SELECT 
+        g.gmina_nazwa AS municipality_name,
+        ROUND(SUM(f.wartosc_brutto_pln), 2) AS total_aid_pln
+    FROM delta_scan('azure://gold/fact_przypadki_pomocy') f
+    JOIN delta_scan('azure://gold/dim_gmina') g ON f.geografia_id = g.geografia_id
+    GROUP BY g.gmina_nazwa
+    ORDER BY total_aid_pln DESC
+    LIMIT 5;

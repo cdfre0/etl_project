@@ -39,18 +39,32 @@ if not db_host or not db_token:
 
 # 2. Configure project paths
 dbt_project_dir = "../../dbt_project"
-storage_account_name = "stetldatamedallion" 
-
-# 3. Explicitly initialize the gold schema in metastore to point to ADLS
-# This prevents DELTA_TABLE_LOCATION_MISMATCH by defining the location at the schema level
+storage_account_name = "stetldatamedallion"
 gold_location = f"abfss://gold@{storage_account_name}.dfs.core.windows.net/"
+
+# 3. Ensure the gold schema and backing path exist before dbt starts.
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS gold LOCATION '{gold_location}'")
+spark.sql(f"CREATE DATABASE IF NOT EXISTS gold LOCATION '{gold_location}'")
+spark.sql(f"CREATE TABLE IF NOT EXISTS gold.__dbt_gold_bootstrap (id INT) USING DELTA LOCATION '{gold_location}__dbt_gold_bootstrap'")
+spark.sql("DROP TABLE IF EXISTS gold.__dbt_gold_bootstrap")
+
+# 3b. Self-Healing: Drop orphaned metastore tables
+# If you manually delete files in Azure Storage but don't drop the tables in Databricks,
+# the metastore gets confused and throws DELTA_PATH_DOES_NOT_EXIST.
+# Since dbt runs full table materializations here, we can safely drop all pointers first.
+try:
+    existing_tables = [row.tableName for row in spark.sql("SHOW TABLES IN gold").collect()]
+    for t in existing_tables:
+        print(f"Dropping orphaned table pointer: gold.{t}")
+        spark.sql(f"DROP TABLE IF EXISTS gold.{t}")
+except Exception as e:
+    print(f"Note: Metastore cleanup skipped ({e})")
 
 print(f"Launching dbt run against host: {db_host}...")
 
 from dbt.cli.main import dbtRunner, dbtRunnerResult
 
-# 3. Trigger dbt cleanly through the natively attached Python programmatic API
+# 4. Trigger dbt cleanly through the natively attached Python programmatic API
 dbt = dbtRunner()
 
 # Explicitly pass the project directory to both configurations
@@ -58,7 +72,7 @@ result: dbtRunnerResult = dbt.invoke(
     ["run", "--profiles-dir", dbt_project_dir, "--project-dir", dbt_project_dir]
 )
 
-# 4. Check for ungraceful failures
+# 5. Check for ungraceful failures
 if not result.success:
     raise Exception("DBT Run Failed! Check the console output above for details.")
 

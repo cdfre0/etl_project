@@ -182,7 +182,14 @@ def fetch_and_save_cases(service_client, search_param: str, param_value: str) ->
                 )
                 return
         except json.JSONDecodeError:
-            logging.warning(f"Non-JSON poll response for queue {queue_id}.")
+            body_preview = (queue_response.text or "")[:500].replace("\n", " ").replace("\r", " ")
+            logging.warning(
+                "Non-JSON poll response for queue %s | status=%s | content-type=%s | body=%r",
+                queue_id,
+                queue_response.status_code,
+                queue_response.headers.get("Content-Type"),
+                body_preview,
+            )
 
     logging.warning(f"Polling timed out for queue ID {queue_id}.")
 
