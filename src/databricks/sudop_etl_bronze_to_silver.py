@@ -55,6 +55,7 @@ cases_raw_df = (
     .option("multiline", "true")
     .option("mode", "PERMISSIVE")
     .option("columnNameOfCorruptRecord", CORRUPT_COL)
+    .option("samplingRatio", "0.01")  # Prevents Driver OOM by sampling 1% of files for schema
     .json(f"{bronze_path}cases/*.json")
 )
 
