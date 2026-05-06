@@ -1,3 +1,7 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Data Product Contract – SUDOP Public Aid Data Product
+# ─────────────────────────────────────────────────────────────────────────────
+
 product_name: SUDOP Public Aid Data Product
 product_owner: Jan (ETL Project Team)
 product_purpose: >
@@ -8,13 +12,23 @@ product_purpose: >
 data_sources:
   - name: UOKiK SUDOP API
     type: REST API
-    description: System Udostępniania Danych o Pomocy Publicznej (SUDOP)
+    description: >
+      System Udostępniania Danych o Pomocy Publicznej (SUDOP) — the official Polish government API
+      maintained by the Office of Competition and Consumer Protection (UOKiK). Provides case-level
+      records of public aid and reference dictionaries (municipalities, aid forms, sectors, etc.).
 
-refresh_frequency: Daily
-access_method: 
-  type: Direct Storage Access (Azure SAS Token)
+refresh_frequency: Daily (ADF pipeline scheduled at 02:00 UTC)
+
+access_method:
+  type: Direct Storage Access (Azure SAS Token + DuckDB)
   location: "azure://gold@stetldatamedallion.blob.core.windows.net/"
-  credentials: "Read-only SAS Token provided in project documentation/demo scripts."
+  credentials: >
+    Read-only SAS Token provided in the demo_usage.py script.
+    Valid until June 2026. No Databricks login required.
+  instructions: >
+    1. pip install duckdb
+    2. Run demo_usage.py from the repository root.
+    3. Or use your own DuckDB script with the azure + delta extensions.
 
 schema:
   fact_table:
@@ -27,6 +41,9 @@ schema:
       - name: wartosc_brutto_pln
         type: DOUBLE
         description: Gross aid value in PLN
+      - name: wartosc_brutto_eur
+        type: DOUBLE
+        description: Gross aid value in EUR
       - name: beneficjent_id
         type: BIGINT
         description: Foreign key to dim_beneficjent
@@ -49,53 +66,166 @@ schema:
       columns:
         - name: beneficjent_id
           type: BIGINT
+          description: Surrogate key (auto-generated)
         - name: nip_beneficjenta
           type: STRING
+          description: Tax Identification Number of the beneficiary
         - name: nazwa_beneficjenta
           type: STRING
+          description: Full name of the beneficiary entity
         - name: wielkosc_beneficjenta_nazwa
           type: STRING
-    - name: dim_gmina
-      description: Geography dimension for the municipality.
+          description: Business size category (mikro, mały, średni, duży, or BRAK DANYCH)
+
     - name: dim_udzielajacy_pomocy
       description: Dimension detailing the entity granting the aid.
+      columns:
+        - name: udzielajacy_pomocy_id
+          type: BIGINT
+          description: Surrogate key (auto-generated)
+        - name: nip_udzielajacego_pomocy
+          type: STRING
+          description: Tax Identification Number of the granting entity
+        - name: nazwa_udzielajacego_pomocy
+          type: STRING
+          description: Full name of the granting entity
+
+    - name: dim_gmina
+      description: Geography dimension for the municipality.
+      columns:
+        - name: geografia_id
+          type: BIGINT
+          description: Surrogate key (auto-generated)
+        - name: gmina_kod
+          type: STRING
+          description: Official municipality code (TERYT)
+        - name: gmina_nazwa
+          type: STRING
+          description: Municipality name
+
     - name: dim_charakterystyka
       description: Dimension detailing the form, purpose, and sector of the aid.
+      columns:
+        - name: charakterystyka_id
+          type: BIGINT
+          description: Surrogate key (auto-generated)
+        - name: forma_pomocy_nazwa
+          type: STRING
+          description: Form of aid (e.g. dotacja, pożyczka)
+        - name: przeznaczenie_pomocy_nazwa
+          type: STRING
+          description: Purpose of the aid
+        - name: sektor_dzialalnosci_nazwa
+          type: STRING
+          description: Economic sector of the beneficiary
+
     - name: dim_data
       description: Time dimension based on the date the aid was granted.
+      columns:
+        - name: date_id
+          type: BIGINT
+          description: Surrogate key (auto-generated)
+        - name: dzien_udzielenia_pomocy
+          type: DATE
+          description: Full date when aid was granted
+        - name: year
+          type: INT
+          description: Year component
+        - name: month
+          type: INT
+          description: Month component
+        - name: day
+          type: INT
+          description: Day component
+        - name: quarter
+          type: INT
+          description: Quarter of the year (1-4)
+        - name: day_of_week
+          type: STRING
+          description: Day name (Monday, Tuesday, etc.)
+        - name: is_weekend
+          type: BOOLEAN
+          description: True if the date falls on a weekend
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Data Quality Metrics
+# ─────────────────────────────────────────────────────────────────────────────
 quality_metrics:
   - metric_name: Completeness of Financial Values
-    definition: "% of rows in fact_przypadki_pomocy where wartosc_brutto_pln is not null"
+    definition: "% of rows in fact_przypadki_pomocy where wartosc_brutto_pln IS NOT NULL"
     current_value: "~100%"
     expected_threshold: "> 99.9%"
     update_cadence: "Every pipeline run"
-  
-  - metric_name: Uniqueness of Beneficiaries
+
+  - metric_name: Uniqueness of Beneficiary IDs
     definition: "% of unique beneficjent_id values in dim_beneficjent relative to total rows"
     current_value: "100%"
     expected_threshold: "100%"
     update_cadence: "Every pipeline run"
 
-  - metric_name: Consistency (Referential Integrity)
+  - metric_name: Referential Integrity (Fact → dim_gmina)
     definition: "% of rows in fact_przypadki_pomocy that have a valid, non-null geografia_id matching dim_gmina"
     current_value: "~100%"
     expected_threshold: "> 99.0%"
     update_cadence: "Every pipeline run"
 
+  - metric_name: Data Freshness
+    definition: "Time since the last successful pipeline run (ADF trigger + Databricks execution)"
+    current_value: "< 1 day"
+    expected_threshold: "< 2 days"
+    update_cadence: "Daily (monitored by ADF)"
+
+  - metric_name: Validity of Aid Dates
+    definition: "% of rows where dzien_udzielenia_pomocy is a valid date and is not in the future"
+    current_value: "~100%"
+    expected_threshold: "> 99.5%"
+    update_cadence: "Every pipeline run"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Known Limitations
+# ─────────────────────────────────────────────────────────────────────────────
 known_limitations:
   - Historical SUDOP API data may contain delays or retroactive corrections.
-  - Beneficiary sizing metadata (micro, small, large) is dependent on the reporting entity and may contain NULLs.
+  - Beneficiary sizing metadata (micro, small, large) is dependent on the reporting entity and may contain NULLs or "BRAK DANYCH".
+  - Municipality entries with invalid names ("NZ", "BRAK DANYCH") are filtered out at ingestion time.
+  - The SAS token expires in June 2026 and must be regenerated periodically.
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Example Usage
+# ─────────────────────────────────────────────────────────────────────────────
 example_usage:
-  type: SQL
-  query: |
-    -- Top 5 municipalities by total aid disbursed
-    SELECT 
-        g.gmina_nazwa AS municipality_name,
-        ROUND(SUM(f.wartosc_brutto_pln), 2) AS total_aid_pln
-    FROM delta_scan('azure://gold/fact_przypadki_pomocy') f
-    JOIN delta_scan('azure://gold/dim_gmina') g ON f.geografia_id = g.geografia_id
-    GROUP BY g.gmina_nazwa
-    ORDER BY total_aid_pln DESC
-    LIMIT 5;
+  - type: Python (DuckDB)
+    description: "Query the Gold layer remotely using DuckDB — no Databricks needed."
+    code: |
+      import duckdb
+      conn = duckdb.connect()
+      conn.execute("INSTALL azure; LOAD azure; INSTALL delta; LOAD delta;")
+      conn.execute("""
+          CREATE SECRET azure_secret (
+              TYPE AZURE,
+              CONNECTION_STRING 'BlobEndpoint=https://stetldatamedallion.blob.core.windows.net/;SharedAccessSignature=<SAS_TOKEN>'
+          );
+      """)
+      df = conn.execute("""
+          SELECT g.gmina_nazwa, ROUND(SUM(f.wartosc_brutto_pln),2) AS total_aid
+          FROM delta_scan('azure://gold/fact_przypadki_pomocy') f
+          JOIN delta_scan('azure://gold/dim_gmina') g ON f.geografia_id = g.geografia_id
+          GROUP BY g.gmina_nazwa
+          ORDER BY total_aid DESC
+          LIMIT 5;
+      """).df()
+      print(df)
+
+  - type: SQL (Databricks)
+    description: "Direct SQL query if you have Databricks access."
+    code: |
+      SELECT
+          b.nazwa_beneficjenta,
+          b.wielkosc_beneficjenta_nazwa AS company_size,
+          COUNT(*) AS number_of_aid_cases,
+          ROUND(SUM(f.wartosc_brutto_pln), 2) AS total_aid_pln
+      FROM gold.fact_przypadki_pomocy f
+      JOIN gold.dim_beneficjent b ON f.beneficjent_id = b.beneficjent_id
+      GROUP BY b.nazwa_beneficjenta, b.wielkosc_beneficjenta_nazwa
+      ORDER BY total_aid_pln DESC
+      LIMIT 10;
